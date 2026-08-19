@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  native:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch ArduinoJson 6
+        run: git clone --depth 1 --branch v6.21.5 https://github.com/bblanchon/ArduinoJson.git test/third_party/ArduinoJson
+      - name: Run native tests
+        run: |
+          g++ -std=c++11 -Wall -Wextra -I src -I test/third_party/ArduinoJson/src \
+            -o test/native/test_runner \
+            test/native/test_runner.cpp \
+            src/internal/ChannelStore.cpp \
+            src/internal/TextParser.cpp \
+            src/internal/JsonParser.cpp \
+            src/internal/JsonStreamFramer.cpp \
+            src/internal/TextStreamFramer.cpp \
+            src/internal/Ping.cpp
+          ./test/native/test_runner
+
+  compile:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - fqbn: esp32:esp32:esp32:PartitionScheme=huge_app
+            sketch: examples/AllControls
+          - fqbn: esp32:esp32:esp32s3
+            sketch: examples/BLE_Minimal
+          - fqbn: esp32:esp32:esp32c3
+            sketch: examples/BLE_Minimal
+          - fqbn: esp32:esp32:esp32:PartitionScheme=huge_app
+            sketch: examples/SPP_Minimal
+          - fqbn: esp8266:esp8266:generic
+            sketch: examples/WebSocket_Minimal
+          - fqbn: esp8266:esp8266:generic
+            sketch: examples/BLE_Minimal
+          - fqbn: arduino:renesas_uno:unor4wifi
+            sketch: examples/BLE_Minimal
+          - fqbn: arduino:renesas_uno:unor4wifi
+            sketch: examples/WebSocket_Minimal
+    steps:
+      - uses: actions/checkout@v4
+      - uses: arduino/compile-sketches@v1
+        with:
+          fqbn: ${{ matrix.fqbn }}
+          sketch-paths: |
+            - ${{ matrix.sketch }}
+          libraries: |
+            - source-path: ./
+            - name: ArduinoJson
+              version: 6.21.5
+            - name: WebSockets
+            - name: ArduinoBLE
+          platforms: |
+            - name: esp32:esp32
+              source-url: https://espressif.github.io/arduino-esp32/package_esp32_index.json
+            - name: esp8266:esp8266
+              source-url: https://arduino.esp8266.com/stable/package_esp8266com_index.json
+            - name: arduino:renesas_uno

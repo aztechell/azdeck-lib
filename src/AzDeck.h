@@ -43,7 +43,7 @@ public:
 
 private:
     void failsafe();
-    void handlePayload(const char* data, size_t length, uint8_t clientId);
+    void handlePayload(char* data, size_t length, uint8_t clientId);
     void sendReply(const char* data, size_t length, uint8_t clientId);
     void checkTimeout();
     bool startTransport();

@@ -18,10 +18,14 @@
 
 #ifndef AZDECK_JSON_DOC_SIZE
 #if defined(ARDUINO) && (defined(ARDUINO_UNOR4_WIFI) || defined(ESP8266))
-#define AZDECK_JSON_DOC_SIZE 512
+#define AZDECK_JSON_DOC_SIZE 768
 #else
 #define AZDECK_JSON_DOC_SIZE 1024
 #endif
+#endif
+
+#ifndef AZDECK_PACKET_QUEUE_DEPTH
+#define AZDECK_PACKET_QUEUE_DEPTH 4
 #endif
 
 #ifndef AZDECK_MAX_DEVICE_NAME_LENGTH

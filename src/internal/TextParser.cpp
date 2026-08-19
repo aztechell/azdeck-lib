@@ -2,7 +2,9 @@
 
 #include "ChannelStore.h"
 #include "Config.h"
+#include "PendingSnapshot.h"
 
+#include <math.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -23,7 +25,10 @@ bool parseNumber(const char* text, size_t length, float& out) {
 
     char* end = nullptr;
     const float value = strtof(buffer, &end);
-    if (end == buffer) {
+    if (end != buffer + length) {
+        return false;
+    }
+    if (!isfinite(static_cast<double>(value))) {
         return false;
     }
     out = value;
@@ -41,8 +46,11 @@ AzDeckTextParseResult azdeckParseText(
         return AZDECK_TEXT_MALFORMED;
     }
 
-    int applied = 0;
+    AzDeckPendingSnapshot snapshot;
+    snapshot.clear();
+
     size_t i = 0;
+    bool sawToken = false;
     while (i < length) {
         while (i < length && isSeparator(data[i])) {
             ++i;
@@ -60,6 +68,7 @@ AzDeckTextParseResult azdeckParseText(
         if (tokenLength == 0) {
             continue;
         }
+        sawToken = true;
 
         size_t sep = static_cast<size_t>(-1);
         for (size_t j = 0; j < tokenLength; ++j) {
@@ -71,7 +80,7 @@ AzDeckTextParseResult azdeckParseText(
         }
 
         if (sep == static_cast<size_t>(-1) || sep == 0 || sep + 1 >= tokenLength) {
-            continue;
+            return AZDECK_TEXT_MALFORMED;
         }
 
         const char* keyPtr = data + tokenStart;
@@ -89,12 +98,20 @@ AzDeckTextParseResult azdeckParseText(
 
         float value = 0.0f;
         if (!parseNumber(valuePtr, valueLen, value)) {
-            continue;
+            return AZDECK_TEXT_MALFORMED;
         }
-
-        store.set(key, value);
-        ++applied;
+        if (!snapshot.add(key, value)) {
+            return AZDECK_TEXT_MALFORMED;
+        }
     }
 
-    return applied > 0 ? AZDECK_TEXT_CONTROL : AZDECK_TEXT_MALFORMED;
+    if (!sawToken) {
+        return AZDECK_TEXT_MALFORMED;
+    }
+    if (snapshot.count == 0) {
+        return AZDECK_TEXT_EMPTY;
+    }
+
+    azdeckCommitSnapshot(store, snapshot);
+    return AZDECK_TEXT_CONTROL;
 }

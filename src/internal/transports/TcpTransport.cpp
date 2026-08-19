@@ -2,6 +2,7 @@
 
 #include "../JsonStreamFramer.h"
 #include "../PlatformCaps.h"
+#include "../TextStreamFramer.h"
 
 #if AZDECK_HAS_WIFI
 #if defined(ESP8266)
@@ -20,7 +21,8 @@ WiFiServer* gServer = nullptr;
 WiFiClient gClient;
 bool gJsonMode = true;
 bool gHadClient = false;
-AzDeckJsonStreamFramer gFramer;
+AzDeckJsonStreamFramer gJsonFramer;
+AzDeckTextStreamFramer gTextFramer;
 
 struct TcpCallbacks {
     void (*onPayload)(void* context, const char* data, size_t length);
@@ -45,47 +47,10 @@ void onJsonFail(void* context) {
     }
 }
 
-void processTextChunk(const uint8_t* data, size_t length) {
-    if (gCallbacks.onPayload == nullptr || data == nullptr || length == 0) {
-        return;
-    }
-
-    bool sawLineFeed = false;
-    size_t start = 0;
-    for (size_t i = 0; i < length; ++i) {
-        if (data[i] != '\n') {
-            continue;
-        }
-        sawLineFeed = true;
-        size_t end = i;
-        if (end > start && data[end - 1] == '\r') {
-            --end;
-        }
-        if (end > start) {
-            gCallbacks.onPayload(
-                gCallbacks.context,
-                reinterpret_cast<const char*>(data + start),
-                end - start
-            );
-        }
-        start = i + 1;
-    }
-
-    if (!sawLineFeed) {
-        gCallbacks.onPayload(
-            gCallbacks.context,
-            reinterpret_cast<const char*>(data),
-            length
-        );
-        return;
-    }
-
-    if (start < length) {
-        gCallbacks.onPayload(
-            gCallbacks.context,
-            reinterpret_cast<const char*>(data + start),
-            length - start
-        );
+void onTextLine(void* context, const char* data, size_t length) {
+    TcpCallbacks* callbacks = static_cast<TcpCallbacks*>(context);
+    if (callbacks != nullptr && callbacks->onPayload != nullptr) {
+        callbacks->onPayload(callbacks->context, data, length);
     }
 }
 }  // namespace
@@ -93,7 +58,8 @@ void processTextChunk(const uint8_t* data, size_t length) {
 bool azdeckTcpBegin(uint16_t port, bool jsonMode) {
     gJsonMode = jsonMode;
     gHadClient = false;
-    gFramer.reset();
+    gJsonFramer.reset();
+    gTextFramer.reset();
     gClient.stop();
 
     if (gServer != nullptr) {
@@ -127,7 +93,8 @@ void azdeckTcpUpdate(
     if (incoming) {
         if (!gClient || !gClient.connected()) {
             gClient = incoming;
-            gFramer.reset();
+            gJsonFramer.reset();
+            gTextFramer.reset();
             gHadClient = true;
         }
     }
@@ -135,7 +102,8 @@ void azdeckTcpUpdate(
     if (!gClient || !gClient.connected()) {
         if (gHadClient) {
             gHadClient = false;
-            gFramer.reset();
+            gJsonFramer.reset();
+            gTextFramer.reset();
             if (gCallbacks.onDisconnect != nullptr) {
                 gCallbacks.onDisconnect(gCallbacks.context);
             }
@@ -144,6 +112,7 @@ void azdeckTcpUpdate(
     }
 
     gHadClient = true;
+    bool overflow = false;
     while (gClient.available() > 0) {
         uint8_t chunk[64];
         const int readCount = gClient.read(chunk, sizeof(chunk));
@@ -151,16 +120,28 @@ void azdeckTcpUpdate(
             break;
         }
         if (gJsonMode) {
-            gFramer.feed(
+            gJsonFramer.feed(
                 chunk,
                 static_cast<size_t>(readCount),
                 onJsonObject,
                 onJsonFail,
                 &gCallbacks
             );
-        } else {
-            processTextChunk(chunk, static_cast<size_t>(readCount));
+        } else if (!gTextFramer.append(chunk, static_cast<size_t>(readCount))) {
+            overflow = true;
+            break;
         }
+    }
+
+    if (!gJsonMode) {
+        if (overflow) {
+            gTextFramer.reset();
+            if (gCallbacks.onFail != nullptr) {
+                gCallbacks.onFail(gCallbacks.context);
+            }
+            return;
+        }
+        gTextFramer.processAfterBurst(onTextLine, onJsonFail, &gCallbacks);
     }
 }
 

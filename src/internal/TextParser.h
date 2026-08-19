@@ -6,6 +6,7 @@ class AzDeckChannelStore;
 
 enum AzDeckTextParseResult {
     AZDECK_TEXT_CONTROL,
+    AZDECK_TEXT_EMPTY,
     AZDECK_TEXT_MALFORMED
 };
 

@@ -92,7 +92,7 @@ bool AzDeck::begin(
 
     transport_ = transport;
     serializer_ = serializer;
-    timeoutMs_ = timeoutMs;
+    timeoutMs_ = (timeoutMs == 0) ? AZDECK_DEFAULT_TIMEOUT_MS : timeoutMs;
     lastCommandMs_ = 0;
     hasCommand_ = false;
     channels_.zeroValues();
@@ -153,12 +153,12 @@ void AzDeck::sendReply(const char* data, size_t length, uint8_t clientId) {
     }
 }
 
-void AzDeck::handlePayload(const char* data, size_t length, uint8_t clientId) {
+void AzDeck::handlePayload(char* data, size_t length, uint8_t clientId) {
     if (data == nullptr || length == 0) {
         return;
     }
 
-    if (azdeckIsPing(data, length)) {
+    if (transport_ == WEBSOCKET && azdeckIsPing(data, length)) {
         char pong[AZDECK_RX_BUFFER_SIZE];
         size_t pongLength = 0;
         if (azdeckBuildPong(data, length, pong, sizeof(pong), &pongLength)) {
@@ -173,7 +173,7 @@ void AzDeck::handlePayload(const char* data, size_t length, uint8_t clientId) {
             failsafe();
             return;
         }
-        if (result == AZDECK_JSON_SERVICE) {
+        if (result == AZDECK_JSON_SERVICE || result == AZDECK_JSON_EMPTY) {
             return;
         }
         lastCommandMs_ = millis();
@@ -186,12 +186,16 @@ void AzDeck::handlePayload(const char* data, size_t length, uint8_t clientId) {
         failsafe();
         return;
     }
+    if (result == AZDECK_TEXT_EMPTY) {
+        return;
+    }
     lastCommandMs_ = millis();
     hasCommand_ = true;
 }
 
 void AzDeck::tcpPayloadThunk(void* context, const char* data, size_t length) {
-    static_cast<AzDeck*>(context)->handlePayload(data, length, 0);
+    AzDeck* self = static_cast<AzDeck*>(context);
+    self->handlePayload(const_cast<char*>(data), length, 0);
 }
 
 void AzDeck::tcpFailThunk(void* context) {
@@ -205,7 +209,7 @@ void AzDeck::tcpDisconnectThunk(void* context) {
 }
 
 void AzDeck::checkTimeout() {
-    if (!hasCommand_ || timeoutMs_ == 0) {
+    if (!hasCommand_) {
         return;
     }
     if (millis() - lastCommandMs_ > timeoutMs_) {

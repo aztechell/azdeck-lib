@@ -41,11 +41,7 @@ float custom = deck.value("custom_channel");
 
 Channel names come from the AzDeck profile. Unknown channels return `0`.
 
-Optional timeout (default 350 ms):
-
-```cpp
-deck.begin(BLE, JSON, 500);
-```
+Timeout defaults to **350 ms**. `deck.begin(BLE, JSON, 500)` changes it. Passing `0` still uses 350 ms.
 
 If no valid control packet arrives within the timeout, every stored channel is set to `0`.
 
@@ -100,9 +96,15 @@ deck.begin(SPP, TEXT);
 
 Unsupported combinations compile, and `begin()` returns `false`. The library does not print to Serial.
 
-## Channel names
+ESP32 classic sketches that include AzDeck also pull BLE, Classic Bluetooth, Wi-Fi, and WebSockets. On a 4 MB module, select a larger app partition such as **Huge APP** if the default 1.2 MB app partition is too small.
 
-Maximum channel name length is **32** characters (`AZDECK_MAX_CHANNEL_NAME_LENGTH`). Longer keys in a packet are ignored; they are never truncated. Up to **32** channels are stored. Extra keys are ignored.
+## Channel names and packet size
+
+Maximum channel name length is **32** characters. Longer keys are ignored; they are never truncated. The store holds up to **32** channels.
+
+Incoming packets are limited to **512** bytes on ESP8266 and UNO R4 WiFi, and **1024** bytes on ESP32. A snapshot that does not fit is discarded and all channels go to `0`.
+
+Typical AzDeck keys such as `move_x` fit 32 JSON channels in those packet limits. Thirty-two channels with 32-character names need more than 512 bytes and will not fit on ESP8266 / UNO R4 WiFi.
 
 ## Serializers
 
