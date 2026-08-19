@@ -6,6 +6,7 @@
 
 #include "../Config.h"
 #include "../NusUuids.h"
+#include "../PacketQueue.h"
 
 #include <BLEDevice.h>
 #include <BLEServer.h>
@@ -22,18 +23,8 @@
 #include "freertos/portmacro.h"
 
 namespace {
-struct PacketSlot {
-    char data[AZDECK_RX_BUFFER_SIZE];
-    size_t len;
-};
-
 portMUX_TYPE gMux = portMUX_INITIALIZER_UNLOCKED;
-PacketSlot gSlots[AZDECK_PACKET_QUEUE_DEPTH];
-uint8_t gHead = 0;
-uint8_t gTail = 0;
-uint8_t gCount = 0;
-volatile bool gOverflow = false;
-volatile bool gDisconnect = false;
+AzDeckPacketQueue gQueue;
 volatile bool gConnected = false;
 
 BLEServer* gServer = nullptr;
@@ -41,88 +32,30 @@ BLECharacteristic* gNotify = nullptr;
 
 void queueReset() {
     portENTER_CRITICAL(&gMux);
-    gHead = 0;
-    gTail = 0;
-    gCount = 0;
-    gOverflow = false;
-    gDisconnect = false;
+    gQueue.reset();
     portEXIT_CRITICAL(&gMux);
 }
 
 void queuePush(const uint8_t* data, size_t length) {
-    if (data == nullptr || length == 0) {
-        return;
-    }
-
     portENTER_CRITICAL(&gMux);
-    if (length >= AZDECK_RX_BUFFER_SIZE) {
-        gOverflow = true;
-        portEXIT_CRITICAL(&gMux);
-        return;
-    }
-
-    if (gCount >= AZDECK_PACKET_QUEUE_DEPTH) {
-        gTail = static_cast<uint8_t>((gTail + 1) % AZDECK_PACKET_QUEUE_DEPTH);
-        gCount--;
-    }
-
-    memcpy(gSlots[gHead].data, data, length);
-    gSlots[gHead].data[length] = '\0';
-    gSlots[gHead].len = length;
-    gHead = static_cast<uint8_t>((gHead + 1) % AZDECK_PACKET_QUEUE_DEPTH);
-    gCount++;
+    gQueue.push(data, length);
     portEXIT_CRITICAL(&gMux);
 }
 
 bool queueTake(char* buffer, size_t capacity, size_t* outLength, bool* overflow) {
+    bool overflowed = false;
     portENTER_CRITICAL(&gMux);
-    const bool overflowed = gOverflow;
-    gOverflow = false;
-    if (overflowed) {
-        portEXIT_CRITICAL(&gMux);
-        if (overflow != nullptr) {
-            *overflow = true;
-        }
-        return false;
-    }
-    if (gCount == 0) {
-        portEXIT_CRITICAL(&gMux);
-        if (overflow != nullptr) {
-            *overflow = false;
-        }
-        return false;
-    }
-
-    const PacketSlot& slot = gSlots[gTail];
-    size_t n = slot.len;
-    if (capacity == 0) {
-        gTail = static_cast<uint8_t>((gTail + 1) % AZDECK_PACKET_QUEUE_DEPTH);
-        gCount--;
-        portEXIT_CRITICAL(&gMux);
-        return false;
-    }
-    if (n >= capacity) {
-        n = capacity - 1;
-    }
-    memcpy(buffer, slot.data, n);
-    gTail = static_cast<uint8_t>((gTail + 1) % AZDECK_PACKET_QUEUE_DEPTH);
-    gCount--;
+    const bool ok = gQueue.take(buffer, capacity, outLength, nullptr, &overflowed);
     portEXIT_CRITICAL(&gMux);
-
-    buffer[n] = '\0';
-    if (outLength != nullptr) {
-        *outLength = n;
-    }
     if (overflow != nullptr) {
-        *overflow = false;
+        *overflow = overflowed;
     }
-    return true;
+    return ok;
 }
 
 bool queueTakeDisconnect() {
     portENTER_CRITICAL(&gMux);
-    const bool disconnected = gDisconnect;
-    gDisconnect = false;
+    const bool disconnected = gQueue.takeDisconnect();
     portEXIT_CRITICAL(&gMux);
     return disconnected;
 }
@@ -137,7 +70,7 @@ class ServerCallbacks : public BLEServerCallbacks {
         (void)server;
         gConnected = false;
         portENTER_CRITICAL(&gMux);
-        gDisconnect = true;
+        gQueue.markDisconnect();
         portEXIT_CRITICAL(&gMux);
         BLEDevice::startAdvertising();
     }

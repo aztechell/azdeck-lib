@@ -1,5 +1,7 @@
 # AzDeck
 
+Controller app: [AzDeck on Google Play](https://play.google.com/store/apps/details?id=com.aztechell.azdeck)
+
 ```cpp
 #include <AzDeck.h>
 
@@ -16,7 +18,9 @@ void loop() {
 }
 ```
 
-Arduino library for receiving named control channels from the [AzDeck](https://github.com/aztechell/azdeck) app. The sketch does not set up BLE, TCP, WebSocket, or Bluetooth SPP, and does not parse JSON or TEXT.
+Arduino library for receiving named control channels from the AzDeck Android app. The sketch does not set up BLE, TCP, WebSocket, or Bluetooth SPP, and does not parse JSON or TEXT.
+
+App, firmware, and protocol: [aztechell/azdeck](https://github.com/aztechell/azdeck)
 
 ## Install
 
@@ -96,7 +100,7 @@ deck.begin(SPP, TEXT);
 
 Unsupported combinations compile, and `begin()` returns `false`. The library does not print to Serial.
 
-ESP32 classic sketches that include AzDeck also pull BLE, Classic Bluetooth, Wi-Fi, and WebSockets. On a 4 MB module, select a larger app partition such as **Huge APP** if the default 1.2 MB app partition is too small.
+ESP32 classic sketches that include AzDeck also pull BLE, Classic Bluetooth, Wi-Fi, and WebSockets. With Arduino-ESP32 3.3.x that binary is about **1.67 MB**. It does **not** fit the default **1.31 MB** app partition (`BLE_Minimal` and `WebSocket_Minimal` both measured at 127% of 1,310,720 bytes). On a 4 MB module choose **Tools → Partition Scheme → Huge APP** (or another scheme with at least 2 MB for the app). ESP32-S3 and ESP32-C3 `BLE_Minimal` sketches fit the default partition.
 
 ## Channel names and packet size
 

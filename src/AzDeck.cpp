@@ -1,10 +1,6 @@
 #include "AzDeck.h"
 
-#include "internal/Config.h"
-#include "internal/JsonParser.h"
-#include "internal/Ping.h"
 #include "internal/PlatformCaps.h"
-#include "internal/TextParser.h"
 #include "internal/platform/WifiAp.h"
 #include "internal/transports/BleTransport.h"
 #include "internal/transports/SppTransport.h"
@@ -50,10 +46,7 @@ bool transportSupported(AzDeckTransport transport) {
 AzDeck::AzDeck()
     : transport_(BLE),
       serializer_(JSON),
-      timeoutMs_(AZDECK_DEFAULT_TIMEOUT_MS),
-      lastCommandMs_(0),
       started_(false),
-      hasCommand_(false),
       wifiConfigured_(false),
       netPort_(AZDECK_DEFAULT_WS_PORT) {
     copyCString(deviceName_, sizeof(deviceName_), AZDECK_DEFAULT_NAME);
@@ -92,10 +85,7 @@ bool AzDeck::begin(
 
     transport_ = transport;
     serializer_ = serializer;
-    timeoutMs_ = (timeoutMs == 0) ? AZDECK_DEFAULT_TIMEOUT_MS : timeoutMs;
-    lastCommandMs_ = 0;
-    hasCommand_ = false;
-    channels_.zeroValues();
+    core_.configure(transport, serializer, timeoutMs);
 
     if (!startTransport()) {
         return false;
@@ -131,7 +121,7 @@ bool AzDeck::startTransport() {
 }
 
 void AzDeck::failsafe() {
-    channels_.zeroValues();
+    core_.failsafe();
 }
 
 void AzDeck::sendReply(const char* data, size_t length, uint8_t clientId) {
@@ -154,43 +144,12 @@ void AzDeck::sendReply(const char* data, size_t length, uint8_t clientId) {
 }
 
 void AzDeck::handlePayload(char* data, size_t length, uint8_t clientId) {
-    if (data == nullptr || length == 0) {
-        return;
+    core_.handlePayload(data, length, millis());
+    char pong[AZDECK_RX_BUFFER_SIZE];
+    size_t pongLength = 0;
+    if (core_.takePong(pong, sizeof(pong), &pongLength)) {
+        sendReply(pong, pongLength, clientId);
     }
-
-    if (transport_ == WEBSOCKET && azdeckIsPing(data, length)) {
-        char pong[AZDECK_RX_BUFFER_SIZE];
-        size_t pongLength = 0;
-        if (azdeckBuildPong(data, length, pong, sizeof(pong), &pongLength)) {
-            sendReply(pong, pongLength, clientId);
-        }
-        return;
-    }
-
-    if (serializer_ == JSON) {
-        const AzDeckJsonParseResult result = azdeckParseJson(data, length, channels_);
-        if (result == AZDECK_JSON_MALFORMED) {
-            failsafe();
-            return;
-        }
-        if (result == AZDECK_JSON_SERVICE || result == AZDECK_JSON_EMPTY) {
-            return;
-        }
-        lastCommandMs_ = millis();
-        hasCommand_ = true;
-        return;
-    }
-
-    const AzDeckTextParseResult result = azdeckParseText(data, length, channels_);
-    if (result == AZDECK_TEXT_MALFORMED) {
-        failsafe();
-        return;
-    }
-    if (result == AZDECK_TEXT_EMPTY) {
-        return;
-    }
-    lastCommandMs_ = millis();
-    hasCommand_ = true;
 }
 
 void AzDeck::tcpPayloadThunk(void* context, const char* data, size_t length) {
@@ -203,19 +162,11 @@ void AzDeck::tcpFailThunk(void* context) {
 }
 
 void AzDeck::tcpDisconnectThunk(void* context) {
-    AzDeck* self = static_cast<AzDeck*>(context);
-    self->failsafe();
-    self->hasCommand_ = false;
+    static_cast<AzDeck*>(context)->core_.noteDisconnect();
 }
 
 void AzDeck::checkTimeout() {
-    if (!hasCommand_) {
-        return;
-    }
-    if (millis() - lastCommandMs_ > timeoutMs_) {
-        failsafe();
-        hasCommand_ = false;
-    }
+    core_.checkTimeout(millis());
 }
 
 void AzDeck::pollTransport() {
@@ -228,8 +179,7 @@ void AzDeck::pollTransport() {
         case BLE:
             azdeckBleUpdate();
             if (azdeckBleTakeDisconnect()) {
-                failsafe();
-                hasCommand_ = false;
+                core_.noteDisconnect();
             }
             while (azdeckBleTake(buffer, sizeof(buffer), &length, &overflow)) {
                 handlePayload(buffer, length, 0);
@@ -241,8 +191,7 @@ void AzDeck::pollTransport() {
         case WEBSOCKET:
             azdeckWsUpdate();
             if (azdeckWsTakeDisconnect()) {
-                failsafe();
-                hasCommand_ = false;
+                core_.noteDisconnect();
             }
             while (azdeckWsTake(buffer, sizeof(buffer), &length, &clientId, &overflow)) {
                 handlePayload(buffer, length, clientId);
@@ -262,8 +211,7 @@ void AzDeck::pollTransport() {
         case SPP:
             azdeckSppUpdate();
             if (azdeckSppTakeDisconnect()) {
-                failsafe();
-                hasCommand_ = false;
+                core_.noteDisconnect();
             }
             while (azdeckSppTake(buffer, sizeof(buffer), &length, &overflow)) {
                 handlePayload(buffer, length, 0);
@@ -286,7 +234,7 @@ void AzDeck::update() {
 }
 
 float AzDeck::value(const char* channel) const {
-    return channels_.get(channel);
+    return core_.value(channel);
 }
 
 float AzDeck::axis(const char* channel) const {

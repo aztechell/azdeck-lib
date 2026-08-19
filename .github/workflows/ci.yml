@@ -26,6 +26,7 @@ jobs:
             -o test/native/test_runner \
             test/native/test_runner.cpp \
             src/internal/ChannelStore.cpp \
+            src/internal/ControlCore.cpp \
             src/internal/TextParser.cpp \
             src/internal/JsonParser.cpp \
             src/internal/JsonStreamFramer.cpp \
@@ -39,6 +40,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # ESP32 classic default app partition is 1.31 MB. AzDeck links BLE +
+          # Classic Bluetooth + Wi-Fi + WebSockets (~1.67 MB) and does not fit.
+          # Keep Huge APP here; the default-partition result is in README.md.
           - fqbn: esp32:esp32:esp32:PartitionScheme=huge_app
             sketch: examples/AllControls
           - fqbn: esp32:esp32:esp32s3

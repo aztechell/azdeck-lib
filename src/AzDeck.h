@@ -1,19 +1,9 @@
 #pragma once
 
 #include <Arduino.h>
-#include "internal/ChannelStore.h"
-
-enum AzDeckTransport {
-    BLE,
-    TCP,
-    WEBSOCKET,
-    SPP
-};
-
-enum AzDeckSerializer {
-    JSON,
-    TEXT
-};
+#include "AzDeckTypes.h"
+#include "internal/Config.h"
+#include "internal/ControlCore.h"
 
 class AzDeck {
 public:
@@ -53,13 +43,10 @@ private:
     static void tcpFailThunk(void* context);
     static void tcpDisconnectThunk(void* context);
 
-    AzDeckChannelStore channels_;
+    AzDeckControlCore core_;
     AzDeckTransport transport_;
     AzDeckSerializer serializer_;
-    uint16_t timeoutMs_;
-    uint32_t lastCommandMs_;
     bool started_;
-    bool hasCommand_;
     bool wifiConfigured_;
     char deviceName_[AZDECK_MAX_DEVICE_NAME_LENGTH + 1];
     char ssid_[AZDECK_MAX_SSID_LENGTH + 1];

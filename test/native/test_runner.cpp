@@ -1,7 +1,10 @@
+#include "AzDeckTypes.h"
 #include "internal/ChannelStore.h"
 #include "internal/Config.h"
+#include "internal/ControlCore.h"
 #include "internal/JsonParser.h"
 #include "internal/JsonStreamFramer.h"
+#include "internal/PacketQueue.h"
 #include "internal/Ping.h"
 #include "internal/TextParser.h"
 #include "internal/TextStreamFramer.h"
@@ -446,6 +449,139 @@ static void testPing() {
     expect(std::strcmp(pong, "AZDECK_PONG:1723456789012") == 0, "pong token");
 }
 
+static void handleCopy(AzDeckControlCore& core, const char* payload, uint32_t nowMs) {
+    char buffer[AZDECK_RX_BUFFER_SIZE];
+    const size_t n = std::strlen(payload);
+    std::memcpy(buffer, payload, n);
+    buffer[n] = '\0';
+    core.handlePayload(buffer, n, nowMs);
+}
+
+static bool takePacket(
+    AzDeckPacketQueue& queue,
+    char* buffer,
+    size_t capacity,
+    bool* overflow
+) {
+    size_t n = 0;
+    return queue.take(buffer, capacity, &n, nullptr, overflow);
+}
+
+static void testPacketQueue() {
+    AzDeckPacketQueue queue;
+    const uint8_t a[] = {'A'};
+    const uint8_t b[] = {'B'};
+    queue.push(a, 1);
+    queue.push(b, 1);
+
+    uint8_t oversized[AZDECK_RX_BUFFER_SIZE];
+    std::memset(oversized, 'x', sizeof(oversized));
+    queue.push(oversized, sizeof(oversized));
+    expect(queue.count() == 0, "overflow clears queue");
+    expect(queue.overflowPending(), "overflow pending");
+
+    char buf[8];
+    bool overflow = false;
+    expect(!takePacket(queue, buf, sizeof(buf), &overflow), "overflow take empty");
+    expect(overflow, "overflow flagged");
+    overflow = false;
+    expect(!takePacket(queue, buf, sizeof(buf), &overflow), "no stale A/B after overflow");
+    expect(!overflow, "overflow consumed");
+    expect(queue.count() == 0, "queue stays empty");
+
+    AzDeckPacketQueue full;
+    for (uint8_t i = 0; i < AZDECK_PACKET_QUEUE_DEPTH; ++i) {
+        uint8_t item[] = {static_cast<uint8_t>('0' + i)};
+        full.push(item, 1);
+    }
+    const uint8_t newest[] = {'N'};
+    full.push(newest, 1);
+    expect(full.count() == AZDECK_PACKET_QUEUE_DEPTH, "full queue keeps depth");
+    expect(!full.overflowPending(), "queue full is not overflow");
+
+    overflow = true;
+    expect(takePacket(full, buf, sizeof(buf), &overflow), "take after drop oldest");
+    expect(!overflow, "queue full does not failsafe");
+    expect(buf[0] == '1', "oldest snapshot dropped");
+    expect(takePacket(full, buf, sizeof(buf), &overflow), "take 2");
+    expect(buf[0] == '2', "retained 2");
+    expect(takePacket(full, buf, sizeof(buf), &overflow), "take 3");
+    expect(buf[0] == '3', "retained 3");
+    expect(takePacket(full, buf, sizeof(buf), &overflow), "take newest");
+    expect(buf[0] == 'N', "newest retained");
+    expect(!takePacket(full, buf, sizeof(buf), &overflow), "queue drained");
+}
+
+static void testControlCore() {
+    AzDeckControlCore jsonCore;
+    jsonCore.configure(BLE, JSON, 350);
+    handleCopy(jsonCore, "{\"x\":1}", 0);
+    expect(jsonCore.value("x") == 1.0f, "json control x");
+    handleCopy(jsonCore, "{\"x\":\"oops\"}", 10);
+    expect(jsonCore.value("x") == 0.0f, "malformed json zeros x");
+    expect(jsonCore.hasCommand(), "malformed json keeps timer");
+    jsonCore.checkTimeout(351);
+    expect(!jsonCore.hasCommand(), "malformed json does not refresh timeout");
+
+    AzDeckControlCore textCore;
+    textCore.configure(TCP, TEXT, 350);
+    handleCopy(textCore, "x:1", 0);
+    expect(textCore.value("x") == 1.0f, "text control x");
+    handleCopy(textCore, "x:oops", 10);
+    expect(textCore.value("x") == 0.0f, "malformed text zeros x");
+
+    AzDeckControlCore service;
+    service.configure(BLE, JSON, 350);
+    handleCopy(service, "{\"x\":1}", 0);
+    handleCopy(service, "{\"type\":\"telemetry\",\"battery\":80}", 10);
+    expect(service.value("x") == 1.0f, "service json keeps x");
+    service.checkTimeout(351);
+    expect(service.value("x") == 0.0f, "service json does not refresh timeout");
+
+    AzDeckControlCore empty;
+    empty.configure(BLE, JSON, 350);
+    handleCopy(empty, "{\"x\":1}", 0);
+    handleCopy(empty, "{}", 10);
+    expect(empty.value("x") == 1.0f, "empty json keeps x");
+    empty.checkTimeout(351);
+    expect(empty.value("x") == 0.0f, "empty json does not refresh timeout");
+
+    AzDeckControlCore ws;
+    ws.configure(WEBSOCKET, JSON, 350);
+    handleCopy(ws, "{\"x\":1}", 0);
+    handleCopy(ws, "AZDECK_PING:1723456789012", 10);
+    char pong[64];
+    size_t pongLength = 0;
+    expect(ws.takePong(pong, sizeof(pong), &pongLength), "ws ping builds pong");
+    expect(std::strcmp(pong, "AZDECK_PONG:1723456789012") == 0, "ws pong token");
+    expect(ws.value("x") == 1.0f, "ws ping keeps controls");
+    ws.checkTimeout(351);
+    expect(ws.value("x") == 0.0f, "ws ping does not refresh timeout");
+
+    const AzDeckTransport nonWs[] = {BLE, TCP, SPP};
+    const char* names[] = {"ble", "tcp", "spp"};
+    for (int i = 0; i < 3; ++i) {
+        AzDeckControlCore core;
+        core.configure(nonWs[i], JSON, 350);
+        handleCopy(core, "{\"x\":1}", 0);
+        handleCopy(core, "AZDECK_PING:1723456789012", 10);
+        pongLength = 0;
+        char noPong[40];
+        char notSpecial[40];
+        std::snprintf(noPong, sizeof(noPong), "%s ping does not pong", names[i]);
+        std::snprintf(notSpecial, sizeof(notSpecial), "%s ping is not special", names[i]);
+        expect(!core.takePong(pong, sizeof(pong), &pongLength), noPong);
+        expect(core.value("x") == 0.0f, notSpecial);
+    }
+
+    AzDeckControlCore timeoutZero;
+    timeoutZero.configure(BLE, JSON, 0);
+    expect(timeoutZero.timeoutMs() == AZDECK_DEFAULT_TIMEOUT_MS, "timeout 0 uses 350");
+    handleCopy(timeoutZero, "{\"x\":1}", 0);
+    timeoutZero.checkTimeout(351);
+    expect(timeoutZero.value("x") == 0.0f, "timeout 0 still failsafes");
+}
+
 int main() {
     testChannelStore();
     testJsonParser();
@@ -453,6 +589,8 @@ int main() {
     testJsonFramer();
     testTextFramer();
     testPing();
+    testPacketQueue();
+    testControlCore();
 
     if (gFailures > 0) {
         std::printf("%d test(s) failed\n", gFailures);

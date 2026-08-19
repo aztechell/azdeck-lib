@@ -17,6 +17,7 @@ CMakeCache.txt
 .arduino/
 azdeck-lib_TZ_v3.md
 azdeck-lib_review_fix_prompt.md
+azdeck-lib_final_fix_prompt.md
 test/native/test_runner
 test/native/test_runner.exe
 test/third_party/
