@@ -5,15 +5,24 @@ on:
   pull_request:
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: arduino/arduino-lint-action@v3
+        with:
+          project-type: library
+          library-manager: submit
+
   native:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: Fetch ArduinoJson 6
-        run: git clone --depth 1 --branch v6.21.5 https://github.com/bblanchon/ArduinoJson.git test/third_party/ArduinoJson
+        run: git clone --depth 1 --branch v6.21.5 https://github.com/bblanchon/ArduinoJson.git "$RUNNER_TEMP/ArduinoJson"
       - name: Run native tests
         run: |
-          g++ -std=c++11 -Wall -Wextra -I src -I test/third_party/ArduinoJson/src \
+          g++ -std=c++11 -Wall -Wextra -I src -I "$RUNNER_TEMP/ArduinoJson/src" \
             -o test/native/test_runner \
             test/native/test_runner.cpp \
             src/internal/ChannelStore.cpp \
