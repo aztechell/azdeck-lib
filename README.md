@@ -28,7 +28,7 @@ App, firmware, and protocol: [aztechell/azdeck](https://github.com/aztechell/azd
 2. Sketch → Include Library → Add .ZIP Library, or clone this repo into `Arduino/libraries/AzDeck`
 3. Install **ArduinoJson 6.x** (not 7) and **WebSockets** by Markus Sattler when prompted
 
-For Arduino UNO R4 WiFi BLE, also install **ArduinoBLE**.
+ArduinoBLE is installed automatically as an AzDeck dependency and is used by the UNO R4 WiFi BLE backend.
 
 ## Reading controls
 
