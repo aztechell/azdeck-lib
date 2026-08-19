@@ -1,0 +1,36 @@
+#######################################
+# Syntax Coloring Map for AzDeck
+#######################################
+
+#######################################
+# Datatypes (KEYWORD1)
+#######################################
+
+AzDeck	KEYWORD1
+AzDeckTransport	KEYWORD1
+AzDeckSerializer	KEYWORD1
+
+#######################################
+# Methods and Functions (KEYWORD2)
+#######################################
+
+begin	KEYWORD2
+update	KEYWORD2
+name	KEYWORD2
+wifi	KEYWORD2
+value	KEYWORD2
+axis	KEYWORD2
+slider	KEYWORD2
+button	KEYWORD2
+dpad	KEYWORD2
+
+#######################################
+# Constants (LITERAL1)
+#######################################
+
+BLE	LITERAL1
+TCP	LITERAL1
+WEBSOCKET	LITERAL1
+SPP	LITERAL1
+JSON	LITERAL1
+TEXT	LITERAL1
