@@ -558,20 +558,27 @@ static void testControlCore() {
     ws.checkTimeout(351);
     expect(ws.value("x") == 0.0f, "ws ping does not refresh timeout");
 
-    const AzDeckTransport nonWs[] = {BLE, TCP, SPP};
+    const AzDeckTransport others[] = {BLE, TCP, SPP};
     const char* names[] = {"ble", "tcp", "spp"};
     for (int i = 0; i < 3; ++i) {
         AzDeckControlCore core;
-        core.configure(nonWs[i], JSON, 350);
+        core.configure(others[i], JSON, 350);
         handleCopy(core, "{\"x\":1}", 0);
         handleCopy(core, "AZDECK_PING:1723456789012", 10);
         pongLength = 0;
-        char noPong[40];
-        char notSpecial[40];
-        std::snprintf(noPong, sizeof(noPong), "%s ping does not pong", names[i]);
-        std::snprintf(notSpecial, sizeof(notSpecial), "%s ping is not special", names[i]);
-        expect(!core.takePong(pong, sizeof(pong), &pongLength), noPong);
-        expect(core.value("x") == 0.0f, notSpecial);
+        char built[40];
+        char token[40];
+        char keeps[40];
+        char noRefresh[48];
+        std::snprintf(built, sizeof(built), "%s ping builds pong", names[i]);
+        std::snprintf(token, sizeof(token), "%s pong token", names[i]);
+        std::snprintf(keeps, sizeof(keeps), "%s ping keeps controls", names[i]);
+        std::snprintf(noRefresh, sizeof(noRefresh), "%s ping does not refresh timeout", names[i]);
+        expect(core.takePong(pong, sizeof(pong), &pongLength), built);
+        expect(std::strcmp(pong, "AZDECK_PONG:1723456789012") == 0, token);
+        expect(core.value("x") == 1.0f, keeps);
+        core.checkTimeout(351);
+        expect(core.value("x") == 0.0f, noRefresh);
     }
 
     AzDeckControlCore timeoutZero;

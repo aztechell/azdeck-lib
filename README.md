@@ -30,6 +30,10 @@ App, firmware, and protocol: [aztechell/azdeck](https://github.com/aztechell/azd
 
 ArduinoBLE is installed automatically as an AzDeck dependency and is used by the UNO R4 WiFi BLE backend.
 
+## Matrix Mini R4
+
+`examples/MatrixR4_Drive` drives motors M1/M2 from a D-pad and `speed`, and servos RC3/RC4 from `ser1` / `ser2`. Install **MatrixMiniR4**. Import `examples/MatrixR4_Drive/profile/Matrix_R4.profile.json` in the AzDeck app, then pair BLE.
+
 ## Reading controls
 
 ```cpp
@@ -58,7 +62,7 @@ deck.name("My Robot");
 deck.begin(BLE, JSON);
 ```
 
-Wi-Fi in v0.1.0 always creates a **controller Access Point** (not Station Mode), then starts a server:
+Wi-Fi in v0.1.1 always creates a **controller Access Point** (not Station Mode), then starts a server:
 
 ```cpp
 deck.wifi("My Robot", "12345678", 81);
@@ -114,7 +118,7 @@ Typical AzDeck keys such as `move_x` fit 32 JSON channels in those packet limits
 
 JSON (recommended) and TEXT (`key:value` or `key=value`, separated by space, `;`, or `,`).
 
-## Limits for v0.1.0
+## Limits for v0.1.1
 
 - Access Point only; no router / Station Mode
 - No UDP, telemetry, labels, or robot/motor APIs

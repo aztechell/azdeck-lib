@@ -1,0 +1,319 @@
+{
+  "id": "39936070-0a38-482f-9a50-bbc512c3111e",
+  "schemaVersion": 4,
+  "name": "Matrix R4",
+  "robotKind": "mecanum_car",
+  "transportConfig": {
+    "type": "ble",
+    "deviceName": "AzDeck",
+    "remoteId": "",
+    "serviceUuid": "6e400001-b5a3-f393-e0a9-e50e24dcca9e",
+    "writeCharacteristicUuid": "6e400002-b5a3-f393-e0a9-e50e24dcca9e",
+    "notifyCharacteristicUuid": "6e400003-b5a3-f393-e0a9-e50e24dcca9e",
+    "writeWithResponse": true,
+    "timeoutMs": 6000
+  },
+  "serializerType": "json",
+  "vibrationStrength": "medium",
+  "layout": {
+    "gridSpec": {
+      "columns": 16,
+      "rows": 9,
+      "cellSpacing": 12.0,
+      "snapTolerance": 0.35
+    },
+    "controls": [
+      {
+        "id": "slider-center",
+        "type": "slider",
+        "name": "Speed Limit",
+        "bounds": {
+          "column": 0,
+          "row": 0,
+          "width": 9,
+          "height": 3
+        },
+        "style": {
+          "fillHex": "#1B2330",
+          "foregroundHex": "#FFFFFF",
+          "outlineHex": "#2E3745",
+          "cornerRadius": 24.0,
+          "elevation": 10.0,
+          "fontScale": 1.0
+        },
+        "behavior": {
+          "label": "Speed",
+          "secondaryLabel": "",
+          "minValue": 0.0,
+          "maxValue": 100.0,
+          "minSecondaryValue": -1.0,
+          "maxSecondaryValue": 1.0,
+          "deadzone": 0.06,
+          "springReturn": false,
+          "floatingCenter": false,
+          "toggleMode": false,
+          "vertical": false,
+          "invertPrimary": false,
+          "invertSecondary": false,
+          "snapToCenter": false,
+          "pressValue": 1.0,
+          "releasedValue": 0.0,
+          "precision": 0,
+          "dPadVariant": "arrows",
+          "initialValue": 100.0,
+          "step": 10.0
+        },
+        "bindings": [
+          {
+            "channel": "speed",
+            "axis": "primary",
+            "scale": 1.0,
+            "offset": 0.0
+          }
+        ]
+      },
+      {
+        "id": "a5383898-7773-4c80-9a91-cf14bdbd9b56",
+        "type": "d_pad",
+        "name": "D-Pad",
+        "bounds": {
+          "column": 0,
+          "row": 3,
+          "width": 6,
+          "height": 6
+        },
+        "style": {
+          "fillHex": "#202632",
+          "foregroundHex": "#FFFFFF",
+          "outlineHex": "#2E3745",
+          "cornerRadius": 24.0,
+          "elevation": 10.0,
+          "fontScale": 1.0
+        },
+        "behavior": {
+          "label": "D-Pad",
+          "secondaryLabel": "",
+          "minValue": 0.0,
+          "maxValue": 1.0,
+          "minSecondaryValue": -1.0,
+          "maxSecondaryValue": 1.0,
+          "deadzone": 0.06,
+          "springReturn": true,
+          "floatingCenter": false,
+          "toggleMode": false,
+          "vertical": false,
+          "invertPrimary": false,
+          "invertSecondary": false,
+          "snapToCenter": false,
+          "pressValue": 1.0,
+          "releasedValue": 0.0,
+          "precision": 2,
+          "dPadVariant": "abxy"
+        },
+        "bindings": [
+          {
+            "channel": "up",
+            "axis": "up",
+            "scale": 1.0,
+            "offset": 0.0
+          },
+          {
+            "channel": "right",
+            "axis": "right",
+            "scale": 1.0,
+            "offset": 0.0
+          },
+          {
+            "channel": "down",
+            "axis": "down",
+            "scale": 1.0,
+            "offset": 0.0
+          },
+          {
+            "channel": "left",
+            "axis": "left",
+            "scale": 1.0,
+            "offset": 0.0
+          }
+        ]
+      },
+      {
+        "id": "0a098a11-71c6-4e9f-83fa-d63fcede2fbc",
+        "type": "slider",
+        "name": "Slider",
+        "bounds": {
+          "column": 14,
+          "row": 0,
+          "width": 2,
+          "height": 9
+        },
+        "style": {
+          "fillHex": "#1B2330",
+          "foregroundHex": "#FFFFFF",
+          "outlineHex": "#2E3745",
+          "cornerRadius": 24.0,
+          "elevation": 10.0,
+          "fontScale": 1.0
+        },
+        "behavior": {
+          "label": "Ser1",
+          "secondaryLabel": "",
+          "minValue": 0.0,
+          "maxValue": 180.0,
+          "minSecondaryValue": -1.0,
+          "maxSecondaryValue": 1.0,
+          "deadzone": 0.06,
+          "springReturn": false,
+          "floatingCenter": false,
+          "toggleMode": false,
+          "vertical": true,
+          "invertPrimary": false,
+          "invertSecondary": false,
+          "snapToCenter": false,
+          "pressValue": 1.0,
+          "releasedValue": 0.0,
+          "precision": 2,
+          "dPadVariant": "arrows",
+          "step": 10.0,
+          "hideLabel": true,
+          "endButtons": true
+        },
+        "bindings": [
+          {
+            "channel": "ser1",
+            "axis": "primary",
+            "scale": 1.0,
+            "offset": 0.0
+          }
+        ]
+      },
+      {
+        "id": "df2a896d-83a2-4067-b5d5-138f5f899b83",
+        "type": "slider",
+        "name": "Slider",
+        "bounds": {
+          "column": 12,
+          "row": 0,
+          "width": 2,
+          "height": 9
+        },
+        "style": {
+          "fillHex": "#1B2330",
+          "foregroundHex": "#FFFFFF",
+          "outlineHex": "#2E3745",
+          "cornerRadius": 24.0,
+          "elevation": 10.0,
+          "fontScale": 1.0
+        },
+        "behavior": {
+          "label": "Ser2",
+          "secondaryLabel": "",
+          "minValue": 0.0,
+          "maxValue": 180.0,
+          "minSecondaryValue": -1.0,
+          "maxSecondaryValue": 1.0,
+          "deadzone": 0.06,
+          "springReturn": false,
+          "floatingCenter": false,
+          "toggleMode": false,
+          "vertical": true,
+          "invertPrimary": false,
+          "invertSecondary": false,
+          "snapToCenter": false,
+          "pressValue": 1.0,
+          "releasedValue": 0.0,
+          "precision": 2,
+          "dPadVariant": "arrows",
+          "step": 10.0,
+          "hideLabel": true,
+          "endButtons": true
+        },
+        "bindings": [
+          {
+            "channel": "ser2",
+            "axis": "primary",
+            "scale": 1.0,
+            "offset": 0.0
+          }
+        ]
+      }
+    ],
+    "variants": {}
+  },
+  "commandRules": [
+    {
+      "channel": "move_x",
+      "sortOrder": 0,
+      "minimum": null,
+      "maximum": null,
+      "precision": 2,
+      "includeWhenZero": true
+    },
+    {
+      "channel": "move_y",
+      "sortOrder": 1,
+      "minimum": null,
+      "maximum": null,
+      "precision": 2,
+      "includeWhenZero": true
+    },
+    {
+      "channel": "rot_x",
+      "sortOrder": 2,
+      "minimum": null,
+      "maximum": null,
+      "precision": 2,
+      "includeWhenZero": true
+    },
+    {
+      "channel": "rot_y",
+      "sortOrder": 3,
+      "minimum": null,
+      "maximum": null,
+      "precision": 2,
+      "includeWhenZero": true
+    },
+    {
+      "channel": "drive_scale",
+      "sortOrder": 4,
+      "minimum": null,
+      "maximum": null,
+      "precision": 0,
+      "includeWhenZero": true
+    },
+    {
+      "channel": "servo_1_dec",
+      "sortOrder": 5,
+      "minimum": null,
+      "maximum": null,
+      "precision": 0,
+      "includeWhenZero": true
+    },
+    {
+      "channel": "servo_1_inc",
+      "sortOrder": 6,
+      "minimum": null,
+      "maximum": null,
+      "precision": 0,
+      "includeWhenZero": true
+    },
+    {
+      "channel": "servo_2_dec",
+      "sortOrder": 7,
+      "minimum": null,
+      "maximum": null,
+      "precision": 0,
+      "includeWhenZero": true
+    },
+    {
+      "channel": "servo_2_inc",
+      "sortOrder": 8,
+      "minimum": null,
+      "maximum": null,
+      "precision": 0,
+      "includeWhenZero": true
+    }
+  ],
+  "createdAt": "2026-08-20T18:35:33.999304",
+  "updatedAt": "2026-08-22T14:35:56.311869"
+}

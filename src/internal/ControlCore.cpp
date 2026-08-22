@@ -46,7 +46,7 @@ void AzDeckControlCore::handlePayload(char* data, size_t length, uint32_t nowMs)
         return;
     }
 
-    if (transport_ == WEBSOCKET && azdeckIsPing(data, length)) {
+    if (azdeckIsPing(data, length)) {
         if (azdeckBuildPong(data, length, pong_, sizeof(pong_), &pongLength_)) {
             return;
         }
