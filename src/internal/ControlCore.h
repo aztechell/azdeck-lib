@@ -3,6 +3,7 @@
 #include "../AzDeckTypes.h"
 #include "ChannelStore.h"
 #include "Config.h"
+#include "TelemetryStore.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -26,9 +27,13 @@ public:
     uint16_t timeoutMs() const;
     bool hasCommand() const;
     bool takePong(char* buffer, size_t capacity, size_t* outLength);
+    bool queueTelemetry(const char* channel, float value);
+    bool queueTelemetry(const char* channel, const char* text);
+    bool takeTelemetry(char* buffer, size_t capacity, size_t* outLength);
 
 private:
     AzDeckChannelStore channels_;
+    AzDeckTelemetryStore telemetry_;
     AzDeckTransport transport_;
     AzDeckSerializer serializer_;
     uint16_t timeoutMs_;

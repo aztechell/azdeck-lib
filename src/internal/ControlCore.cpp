@@ -102,6 +102,18 @@ bool AzDeckControlCore::hasCommand() const {
     return hasCommand_;
 }
 
+bool AzDeckControlCore::queueTelemetry(const char* channel, float value) {
+    return telemetry_.queue(channel, value);
+}
+
+bool AzDeckControlCore::queueTelemetry(const char* channel, const char* text) {
+    return telemetry_.queue(channel, text);
+}
+
+bool AzDeckControlCore::takeTelemetry(char* buffer, size_t capacity, size_t* outLength) {
+    return telemetry_.take(buffer, capacity, outLength);
+}
+
 bool AzDeckControlCore::takePong(char* buffer, size_t capacity, size_t* outLength) {
     if (pongLength_ == 0 || buffer == nullptr || capacity == 0) {
         return false;

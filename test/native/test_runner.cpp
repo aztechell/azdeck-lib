@@ -9,9 +9,11 @@
 #include "internal/TextParser.h"
 #include "internal/TextStreamFramer.h"
 
+#include <ArduinoJson.h>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -589,6 +591,132 @@ static void testControlCore() {
     expect(timeoutZero.value("x") == 0.0f, "timeout 0 still failsafes");
 }
 
+static bool parseTelemetry(
+    const char* json,
+    size_t length,
+    StaticJsonDocument<AZDECK_JSON_DOC_SIZE>& document
+) {
+    if (json == nullptr || length == 0) {
+        return false;
+    }
+    const DeserializationError error = deserializeJson(document, json, length);
+    return error == DeserializationError::Ok && document.is<JsonObject>();
+}
+
+static void testTelemetry() {
+    AzDeckControlCore empty;
+    empty.configure(BLE, JSON, 350);
+    char buffer[AZDECK_RX_BUFFER_SIZE];
+    size_t length = 0;
+    expect(!empty.takeTelemetry(buffer, sizeof(buffer), &length), "empty queue");
+
+    AzDeckControlCore one;
+    one.configure(BLE, JSON, 350);
+    expect(one.queueTelemetry("battery", 7.4f), "queue battery");
+    expect(one.takeTelemetry(buffer, sizeof(buffer), &length), "take one key");
+    StaticJsonDocument<AZDECK_JSON_DOC_SIZE> doc;
+    expect(parseTelemetry(buffer, length, doc), "one key json");
+    expect(std::strcmp(doc["type"] | "", "telemetry") == 0, "one key type");
+    expect(std::fabs(doc["battery"].as<float>() - 7.4f) < 0.001f, "one key value");
+    expect(!doc.containsKey("voltage"), "one key only battery");
+    expect(!one.takeTelemetry(buffer, sizeof(buffer), &length), "one key drained");
+
+    AzDeckControlCore two;
+    two.configure(TCP, TEXT, 350);
+    expect(two.queueTelemetry("battery", 7.4f), "queue two battery");
+    expect(two.queueTelemetry("voltage", 12.5f), "queue two voltage");
+    expect(two.takeTelemetry(buffer, sizeof(buffer), &length), "take two keys");
+    doc.clear();
+    expect(parseTelemetry(buffer, length, doc), "two key json");
+    expect(std::strcmp(doc["type"] | "", "telemetry") == 0, "two key type");
+    expect(std::fabs(doc["battery"].as<float>() - 7.4f) < 0.001f, "two key battery");
+    expect(std::fabs(doc["voltage"].as<float>() - 12.5f) < 0.001f, "two key voltage");
+
+    AzDeckControlCore failsafeCore;
+    failsafeCore.configure(BLE, JSON, 350);
+    handleCopy(failsafeCore, "{\"x\":1}", 0);
+    expect(failsafeCore.queueTelemetry("battery", 8.1f), "queue before failsafe");
+    failsafeCore.failsafe();
+    expect(failsafeCore.value("x") == 0.0f, "failsafe zeros controls");
+    expect(failsafeCore.takeTelemetry(buffer, sizeof(buffer), &length), "failsafe keeps outbound");
+    doc.clear();
+    expect(parseTelemetry(buffer, length, doc), "failsafe telemetry json");
+    expect(std::fabs(doc["battery"].as<float>() - 8.1f) < 0.001f, "failsafe telemetry value");
+
+    AzDeckControlCore inbound;
+    inbound.configure(BLE, JSON, 350);
+    handleCopy(inbound, "{\"type\":\"telemetry\",\"x\":1}", 0);
+    expect(inbound.value("x") == 0.0f, "inbound telemetry does not set x");
+    expect(!inbound.hasCommand(), "inbound telemetry does not refresh timeout");
+
+    AzDeckControlCore rejected;
+    rejected.configure(BLE, JSON, 350);
+    char longName[AZDECK_MAX_CHANNEL_NAME_LENGTH + 2];
+    for (int i = 0; i < AZDECK_MAX_CHANNEL_NAME_LENGTH + 1; ++i) {
+        longName[i] = 'a';
+    }
+    longName[AZDECK_MAX_CHANNEL_NAME_LENGTH + 1] = '\0';
+    expect(!rejected.queueTelemetry(longName, 1.0f), "oversize name ignored");
+    expect(
+        !rejected.queueTelemetry("nan", std::numeric_limits<float>::quiet_NaN()),
+        "nan ignored"
+    );
+    expect(
+        !rejected.queueTelemetry("inf", std::numeric_limits<float>::infinity()),
+        "inf ignored"
+    );
+    expect(!rejected.takeTelemetry(buffer, sizeof(buffer), &length), "rejected stays empty");
+
+    AzDeckControlCore full;
+    full.configure(BLE, JSON, 350);
+    for (int i = 0; i < AZDECK_MAX_CHANNELS; ++i) {
+        char name[8];
+        std::snprintf(name, sizeof(name), "k%02d", i);
+        expect(full.queueTelemetry(name, static_cast<float>(i)), name);
+    }
+    expect(!full.queueTelemetry("extra", 1.0f), "33rd key ignored");
+
+    AzDeckControlCore overflow;
+    overflow.configure(BLE, JSON, 350);
+    expect(overflow.queueTelemetry("battery", 7.4f), "overflow measure queue");
+    char oneKey[AZDECK_RX_BUFFER_SIZE];
+    size_t oneLen = 0;
+    expect(overflow.takeTelemetry(oneKey, sizeof(oneKey), &oneLen), "overflow measure take");
+    expect(overflow.queueTelemetry("battery", 7.4f), "overflow requeue battery");
+    expect(overflow.queueTelemetry("voltage", 12.5f), "overflow queue voltage");
+    char part[AZDECK_RX_BUFFER_SIZE];
+    size_t partLen = 0;
+    expect(overflow.takeTelemetry(part, oneLen + 1, &partLen), "oversized first flush");
+    doc.clear();
+    expect(parseTelemetry(part, partLen, doc), "partial json");
+    expect(doc.containsKey("battery"), "partial has first key");
+    expect(!doc.containsKey("voltage"), "partial leaves remainder");
+    char rest[AZDECK_RX_BUFFER_SIZE];
+    size_t restLen = 0;
+    expect(overflow.takeTelemetry(rest, sizeof(rest), &restLen), "oversized remainder");
+    doc.clear();
+    expect(parseTelemetry(rest, restLen, doc), "remainder json");
+    expect(doc.containsKey("voltage"), "remainder has second key");
+    expect(!doc.containsKey("battery"), "remainder does not resend first");
+
+    AzDeckControlCore text;
+    text.configure(WEBSOCKET, JSON, 350);
+    expect(text.queueTelemetry("serial", "hello"), "queue text");
+    expect(text.takeTelemetry(buffer, sizeof(buffer), &length), "take text");
+    doc.clear();
+    expect(parseTelemetry(buffer, length, doc), "text json");
+    expect(std::strcmp(doc["type"] | "", "telemetry") == 0, "text type");
+    expect(std::strcmp(doc["serial"] | "", "hello") == 0, "text value");
+
+    char tooLong[AZDECK_MAX_TELEMETRY_TEXT_LENGTH + 2];
+    for (int i = 0; i < AZDECK_MAX_TELEMETRY_TEXT_LENGTH + 1; ++i) {
+        tooLong[i] = 'x';
+    }
+    tooLong[AZDECK_MAX_TELEMETRY_TEXT_LENGTH + 1] = '\0';
+    expect(!text.queueTelemetry("serial", tooLong), "oversize text ignored");
+    expect(!text.queueTelemetry("serial", static_cast<const char*>(nullptr)), "null text ignored");
+}
+
 int main() {
     testChannelStore();
     testJsonParser();
@@ -598,6 +726,7 @@ int main() {
     testPing();
     testPacketQueue();
     testControlCore();
+    testTelemetry();
 
     if (gFailures > 0) {
         std::printf("%d test(s) failed\n", gFailures);

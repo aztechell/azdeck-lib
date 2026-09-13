@@ -30,6 +30,8 @@ public:
     float slider(const char* channel) const;
     bool button(const char* channel) const;
     bool dpad(const char* channel) const;
+    void send(const char* channel, float value);
+    void send(const char* channel, const char* text);
 
 private:
     void failsafe();

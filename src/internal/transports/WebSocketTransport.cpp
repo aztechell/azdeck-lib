@@ -72,7 +72,14 @@ void azdeckWsSend(uint8_t clientId, const char* data, size_t length) {
     if (gWebSocket == nullptr || data == nullptr || length == 0) {
         return;
     }
-    gWebSocket->sendTXT(clientId, data, length);
+    if (gWebSocket->clientIsConnected(clientId)) {
+        gWebSocket->sendTXT(clientId, data, length);
+    } else {
+        gWebSocket->broadcastTXT(data, length);
+    }
+#if defined(ESP8266)
+    yield();
+#endif
 }
 
 #else

@@ -145,7 +145,7 @@ void AzDeck::sendReply(const char* data, size_t length, uint8_t clientId) {
 
 void AzDeck::handlePayload(char* data, size_t length, uint8_t clientId) {
     core_.handlePayload(data, length, millis());
-    char pong[AZDECK_RX_BUFFER_SIZE];
+    static char pong[AZDECK_RX_BUFFER_SIZE];
     size_t pongLength = 0;
     if (core_.takePong(pong, sizeof(pong), &pongLength)) {
         sendReply(pong, pongLength, clientId);
@@ -170,7 +170,7 @@ void AzDeck::checkTimeout() {
 }
 
 void AzDeck::pollTransport() {
-    char buffer[AZDECK_RX_BUFFER_SIZE];
+    static char buffer[AZDECK_RX_BUFFER_SIZE];
     size_t length = 0;
     uint8_t clientId = 0;
     bool overflow = false;
@@ -231,6 +231,20 @@ void AzDeck::update() {
     }
     pollTransport();
     checkTimeout();
+
+    static char telemetry[AZDECK_RX_BUFFER_SIZE];
+    size_t telemetryLength = 0;
+    if (core_.takeTelemetry(telemetry, sizeof(telemetry), &telemetryLength)) {
+        sendReply(telemetry, telemetryLength, 0);
+    }
+}
+
+void AzDeck::send(const char* channel, float value) {
+    core_.queueTelemetry(channel, value);
+}
+
+void AzDeck::send(const char* channel, const char* text) {
+    core_.queueTelemetry(channel, text);
 }
 
 float AzDeck::value(const char* channel) const {

@@ -31,7 +31,8 @@ jobs:
             src/internal/JsonParser.cpp \
             src/internal/JsonStreamFramer.cpp \
             src/internal/TextStreamFramer.cpp \
-            src/internal/Ping.cpp
+            src/internal/Ping.cpp \
+            src/internal/TelemetryStore.cpp
           ./test/native/test_runner
 
   compile:
@@ -54,11 +55,15 @@ jobs:
           - fqbn: esp8266:esp8266:generic
             sketch: examples/WebSocket_Minimal
           - fqbn: esp8266:esp8266:generic
+            sketch: examples/Telemetry_Minimal
+          - fqbn: esp8266:esp8266:generic
             sketch: examples/BLE_Minimal
           - fqbn: arduino:renesas_uno:unor4wifi
             sketch: examples/BLE_Minimal
           - fqbn: arduino:renesas_uno:unor4wifi
             sketch: examples/WebSocket_Minimal
+          - fqbn: arduino:renesas_uno:unor4wifi
+            sketch: examples/Telemetry_Minimal
           - fqbn: arduino:renesas_uno:unor4wifi
             sketch: examples/MatrixR4_Drive
     steps:
