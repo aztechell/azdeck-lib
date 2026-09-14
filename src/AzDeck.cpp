@@ -145,7 +145,11 @@ void AzDeck::sendReply(const char* data, size_t length, uint8_t clientId) {
 
 void AzDeck::handlePayload(char* data, size_t length, uint8_t clientId) {
     core_.handlePayload(data, length, millis());
+#if defined(ESP8266)
     static char pong[AZDECK_RX_BUFFER_SIZE];
+#else
+    char pong[AZDECK_RX_BUFFER_SIZE];
+#endif
     size_t pongLength = 0;
     if (core_.takePong(pong, sizeof(pong), &pongLength)) {
         sendReply(pong, pongLength, clientId);
@@ -170,7 +174,11 @@ void AzDeck::checkTimeout() {
 }
 
 void AzDeck::pollTransport() {
+#if defined(ESP8266)
     static char buffer[AZDECK_RX_BUFFER_SIZE];
+#else
+    char buffer[AZDECK_RX_BUFFER_SIZE];
+#endif
     size_t length = 0;
     uint8_t clientId = 0;
     bool overflow = false;
@@ -232,7 +240,11 @@ void AzDeck::update() {
     pollTransport();
     checkTimeout();
 
+#if defined(ESP8266)
     static char telemetry[AZDECK_RX_BUFFER_SIZE];
+#else
+    char telemetry[AZDECK_RX_BUFFER_SIZE];
+#endif
     size_t telemetryLength = 0;
     if (core_.takeTelemetry(telemetry, sizeof(telemetry), &telemetryLength)) {
         sendReply(telemetry, telemetryLength, 0);

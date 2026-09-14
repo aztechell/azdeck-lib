@@ -55,7 +55,7 @@ If no valid control packet arrives within the timeout, every stored channel is s
 
 ## Sending telemetry
 
-`send()` queues a number or a short string (max 80 characters). `update()` flushes dirty keys as one JSON object `{"type":"telemetry",...}` on the same reply path as ping (BLE notify, WebSocket, TCP, or SPP). BLE profiles need a notify characteristic.
+`send()` queues a number or a short string (max **80** characters, or **32** on UNO R4 WiFi). `update()` flushes dirty keys as one JSON object `{"type":"telemetry",...}` on the same reply path as ping (BLE notify, WebSocket, TCP, or SPP). BLE profiles need a notify characteristic.
 
 ```cpp
 deck.send("battery", 7.4f);
@@ -63,7 +63,7 @@ deck.send("serial", "hello");
 deck.update();
 ```
 
-Call `send` on a timer or when a value changes (about 100–250 ms). Sending a new value every `loop()` will flood BLE, especially on UNO R4 WiFi.
+Call `send` on a timer or when a value changes (about 100–250 ms). Sending a new value every `loop()` will flood BLE, especially on UNO R4 WiFi. UNO R4 WiFi keeps **8** telemetry keys and **32**-character strings so Matrix Mini R4 sketches fit in RAM.
 
 In the AzDeck app, bind a telemetry label to the same channel name. `examples/Telemetry_Minimal` sends `count` 0–1000 every 200 ms over WebSocket (`ws://192.168.4.1:81`, Wi-Fi `AzDeck` / `azdeck123`).
 
@@ -76,7 +76,7 @@ deck.name("My Robot");
 deck.begin(BLE, JSON);
 ```
 
-Wi-Fi in v0.1.2 always creates a **controller Access Point** (not Station Mode), then starts a server:
+Wi-Fi in v0.1.3 always creates a **controller Access Point** (not Station Mode), then starts a server:
 
 ```cpp
 deck.wifi("My Robot", "12345678", 81);
@@ -132,9 +132,10 @@ Typical AzDeck keys such as `move_x` fit 32 JSON channels in those packet limits
 
 JSON (recommended) and TEXT (`key:value` or `key=value`, separated by space, `;`, or `,`).
 
-## Limits for v0.1.2
+## Limits for v0.1.3
 
 - Access Point only; no router / Station Mode
 - No UDP, labels, or robot/motor APIs
 - Telemetry is `send()` only (numbers or short strings)
+- Telemetry store: **32** keys on ESP32/ESP8266, **8** keys on UNO R4 WiFi
 - ArduinoJson 6.x only (`StaticJsonDocument`)

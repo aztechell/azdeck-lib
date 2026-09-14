@@ -30,6 +30,6 @@ private:
     int find(const char* name) const;
     bool prepareSlot(const char* name, int* index);
 
-    Slot slots_[AZDECK_MAX_CHANNELS];
+    Slot slots_[AZDECK_MAX_TELEMETRY_CHANNELS];
     int count_;
 };

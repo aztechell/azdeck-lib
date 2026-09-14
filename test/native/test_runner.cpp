@@ -669,12 +669,12 @@ static void testTelemetry() {
 
     AzDeckControlCore full;
     full.configure(BLE, JSON, 350);
-    for (int i = 0; i < AZDECK_MAX_CHANNELS; ++i) {
+    for (int i = 0; i < AZDECK_MAX_TELEMETRY_CHANNELS; ++i) {
         char name[8];
         std::snprintf(name, sizeof(name), "k%02d", i);
         expect(full.queueTelemetry(name, static_cast<float>(i)), name);
     }
-    expect(!full.queueTelemetry("extra", 1.0f), "33rd key ignored");
+    expect(!full.queueTelemetry("extra", 1.0f), "extra telemetry key ignored");
 
     AzDeckControlCore overflow;
     overflow.configure(BLE, JSON, 350);

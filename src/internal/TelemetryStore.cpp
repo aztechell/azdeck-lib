@@ -5,7 +5,7 @@
 #include <string.h>
 
 AzDeckTelemetryStore::AzDeckTelemetryStore() : count_(0) {
-    for (int i = 0; i < AZDECK_MAX_CHANNELS; ++i) {
+    for (int i = 0; i < AZDECK_MAX_TELEMETRY_CHANNELS; ++i) {
         slots_[i].name[0] = '\0';
         slots_[i].text[0] = '\0';
         slots_[i].value = 0.0f;
@@ -43,7 +43,7 @@ bool AzDeckTelemetryStore::prepareSlot(const char* name, int* index) {
         return true;
     }
 
-    if (count_ >= AZDECK_MAX_CHANNELS) {
+    if (count_ >= AZDECK_MAX_TELEMETRY_CHANNELS) {
         return false;
     }
 
@@ -111,11 +111,15 @@ bool AzDeckTelemetryStore::take(char* buffer, size_t capacity, size_t* outLength
         return false;
     }
 
+#if defined(ESP8266)
     static StaticJsonDocument<AZDECK_JSON_DOC_SIZE> document;
     document.clear();
+#else
+    StaticJsonDocument<AZDECK_JSON_DOC_SIZE> document;
+#endif
     document["type"] = "telemetry";
 
-    int included[AZDECK_MAX_CHANNELS];
+    int included[AZDECK_MAX_TELEMETRY_CHANNELS];
     int includedCount = 0;
 
     for (int i = 0; i < count_; ++i) {

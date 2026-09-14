@@ -80,6 +80,7 @@ jobs:
             - name: WebSockets
             - name: ArduinoBLE
             - name: MatrixMiniR4
+              version: 1.2.2
             - name: PubSubClient
           platforms: |
             - name: esp32:esp32
