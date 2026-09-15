@@ -5,7 +5,7 @@ AzDeck deck;
 
 void setup() {
   Serial.begin(9600);
-  deck.begin(WEBSOCKET, JSON);
+  deck.begin(WEBSOCKET);
 }
 
 void loop() {

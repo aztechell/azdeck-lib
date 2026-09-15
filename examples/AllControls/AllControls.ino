@@ -4,7 +4,7 @@
 AzDeck deck;
 
 void setup() {
-    deck.begin(BLE, JSON);
+    deck.begin(BLE);
 }
 
 void loop() {

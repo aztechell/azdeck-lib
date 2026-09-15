@@ -3,11 +3,9 @@
 #include "internal/Config.h"
 #include "internal/ControlCore.h"
 #include "internal/JsonParser.h"
-#include "internal/JsonStreamFramer.h"
 #include "internal/PacketQueue.h"
 #include "internal/Ping.h"
-#include "internal/TextParser.h"
-#include "internal/TextStreamFramer.h"
+#include "internal/platform/SettingsHttpProtocol.h"
 
 #include <ArduinoJson.h>
 #include <cmath>
@@ -15,7 +13,6 @@
 #include <cstring>
 #include <limits>
 #include <string>
-#include <vector>
 
 static int gFailures = 0;
 
@@ -149,294 +146,6 @@ static void testJsonParser() {
     expect(many.get("c31") == 31.0f, "json c31");
 }
 
-static void testTextParser() {
-    AzDeckChannelStore store;
-    const char* text = "move_x:0.5 move_y:-0.3 l2:1";
-    expect(
-        azdeckParseText(text, std::strlen(text), store) == AZDECK_TEXT_CONTROL,
-        "text control"
-    );
-    expect(store.get("move_x") == 0.5f, "text positive");
-    expect(store.get("move_y") == -0.3f, "text negative");
-    expect(store.get("l2") != 0.0f, "text button true");
-
-    AzDeckChannelStore one;
-    const char* justOne = "x:1";
-    expect(azdeckParseText(justOne, std::strlen(justOne), one) == AZDECK_TEXT_CONTROL, "text x:1");
-    expect(one.get("x") == 1.0f, "text x:1 value");
-
-    AzDeckChannelStore neg;
-    const char* justNeg = "x:-1";
-    expect(azdeckParseText(justNeg, std::strlen(justNeg), neg) == AZDECK_TEXT_CONTROL, "text x:-1");
-    expect(neg.get("x") == -1.0f, "text x:-1 value");
-
-    AzDeckChannelStore store2;
-    const char* alt = "speed=180;fire=0,up=1";
-    expect(
-        azdeckParseText(alt, std::strlen(alt), store2) == AZDECK_TEXT_CONTROL,
-        "text separators"
-    );
-    expect(store2.get("speed") == 180.0f, "text integer");
-    expect(store2.get("fire") == 0.0f, "button zero");
-    expect(store2.get("up") == 1.0f, "dpad one");
-
-    AzDeckChannelStore store3;
-    const char* garbage = "hello world";
-    expect(
-        azdeckParseText(garbage, std::strlen(garbage), store3) == AZDECK_TEXT_MALFORMED,
-        "text malformed tokens"
-    );
-
-    AzDeckChannelStore badNum;
-    badNum.set("x", 9.0f);
-    const char* abc = "x:1abc";
-    expect(azdeckParseText(abc, std::strlen(abc), badNum) == AZDECK_TEXT_MALFORMED, "text 1abc malformed");
-    expect(badNum.get("x") == 9.0f, "text 1abc no mutate");
-
-    const char* letters = "x:abc";
-    expect(azdeckParseText(letters, std::strlen(letters), badNum) == AZDECK_TEXT_MALFORMED, "text abc malformed");
-    const char* nanText = "x:NaN";
-    expect(azdeckParseText(nanText, std::strlen(nanText), badNum) == AZDECK_TEXT_MALFORMED, "text NaN malformed");
-    const char* infText = "x:Inf";
-    expect(azdeckParseText(infText, std::strlen(infText), badNum) == AZDECK_TEXT_MALFORMED, "text Inf malformed");
-
-    AzDeckChannelStore partial;
-    partial.set("x", 9.0f);
-    partial.set("y", 8.0f);
-    const char* mixed = "x:1 y:oops";
-    expect(azdeckParseText(mixed, std::strlen(mixed), partial) == AZDECK_TEXT_MALFORMED, "text mixed malformed");
-    expect(partial.get("x") == 9.0f, "text no partial x");
-    expect(partial.get("y") == 8.0f, "text no partial y");
-
-    AzDeckChannelStore store4;
-    std::string longKey(AZDECK_MAX_CHANNEL_NAME_LENGTH + 1, 'k');
-    longKey += ":1 short:2";
-    expect(
-        azdeckParseText(longKey.c_str(), longKey.size(), store4) == AZDECK_TEXT_CONTROL,
-        "text skips oversize key"
-    );
-    expect(store4.get("short") == 2.0f, "text keeps valid key");
-}
-
-struct FramerCapture {
-    std::vector<std::string> objects;
-    int fails;
-};
-
-static void onObject(void* context, const char* data, size_t length) {
-    FramerCapture* capture = static_cast<FramerCapture*>(context);
-    capture->objects.push_back(std::string(data, length));
-}
-
-static void onFail(void* context) {
-    FramerCapture* capture = static_cast<FramerCapture*>(context);
-    ++capture->fails;
-}
-
-static void testJsonFramer() {
-    AzDeckJsonStreamFramer framer;
-    FramerCapture capture;
-    capture.fails = 0;
-
-    const char* first = "{\"a\":1}";
-    framer.feed(
-        reinterpret_cast<const uint8_t*>(first),
-        std::strlen(first),
-        onObject,
-        onFail,
-        &capture
-    );
-    expect(capture.objects.size() == 1, "one json object");
-    expect(capture.fails == 0, "no fail on complete object");
-
-    capture.objects.clear();
-    const char* split = "{\"b\":";
-    framer.feed(
-        reinterpret_cast<const uint8_t*>(split),
-        std::strlen(split),
-        onObject,
-        onFail,
-        &capture
-    );
-    expect(capture.objects.empty(), "incomplete json held");
-    const char* rest = "2}";
-    framer.feed(
-        reinterpret_cast<const uint8_t*>(rest),
-        std::strlen(rest),
-        onObject,
-        onFail,
-        &capture
-    );
-    expect(capture.objects.size() == 1, "json completed across feeds");
-
-    capture.objects.clear();
-    const char* multi = "{\"x\":1}{\"y\":2}";
-    framer.feed(
-        reinterpret_cast<const uint8_t*>(multi),
-        std::strlen(multi),
-        onObject,
-        onFail,
-        &capture
-    );
-    expect(capture.objects.size() == 2, "multiple json objects");
-
-    capture.objects.clear();
-    capture.fails = 0;
-    const char* spaced = "{\"x\":1}   {\"y\":2}";
-    framer.feed(
-        reinterpret_cast<const uint8_t*>(spaced),
-        std::strlen(spaced),
-        onObject,
-        onFail,
-        &capture
-    );
-    expect(capture.objects.size() == 2, "whitespace between objects");
-
-    capture.objects.clear();
-    capture.fails = 0;
-    const char* recovered = "xx{\"z\":3}";
-    framer.reset();
-    framer.feed(
-        reinterpret_cast<const uint8_t*>(recovered),
-        std::strlen(recovered),
-        onObject,
-        onFail,
-        &capture
-    );
-    expect(capture.fails > 0, "malformed prefix fail");
-    expect(capture.objects.size() == 1, "malformed prefix recovery");
-
-    capture.objects.clear();
-    capture.fails = 0;
-    const char* quoted = "{\"k\":\"}\"}";
-    framer.feed(
-        reinterpret_cast<const uint8_t*>(quoted),
-        std::strlen(quoted),
-        onObject,
-        onFail,
-        &capture
-    );
-    expect(capture.objects.size() == 1, "braces inside strings ignored");
-    expect(capture.fails == 0, "quoted brace not fail");
-
-    capture.objects.clear();
-    capture.fails = 0;
-    const char* escaped = "{\"k\":\"\\\"}\"}";
-    framer.feed(
-        reinterpret_cast<const uint8_t*>(escaped),
-        std::strlen(escaped),
-        onObject,
-        onFail,
-        &capture
-    );
-    expect(capture.objects.size() == 1, "escaped quotes handled");
-
-    capture.objects.clear();
-    capture.fails = 0;
-    const char* exact = "{\"n\":42}";
-    const size_t exactLen = std::strlen(exact);
-    framer.reset();
-    for (size_t i = 0; i < exactLen; ++i) {
-        framer.feed(
-            reinterpret_cast<const uint8_t*>(exact + i),
-            1,
-            onObject,
-            onFail,
-            &capture
-        );
-    }
-    expect(capture.objects.size() == 1, "split at every byte");
-    expect(capture.fails == 0, "byte split no fail");
-
-    capture.objects.clear();
-    capture.fails = 0;
-    std::string huge(AZDECK_RX_BUFFER_SIZE + 8, 'x');
-    huge[0] = '{';
-    framer.reset();
-    framer.feed(
-        reinterpret_cast<const uint8_t*>(huge.data()),
-        huge.size(),
-        onObject,
-        onFail,
-        &capture
-    );
-    expect(capture.objects.empty(), "overflow emits nothing");
-    expect(capture.fails > 0, "overflow failsafe");
-}
-
-static void testTextFramer() {
-    AzDeckTextStreamFramer framer;
-    FramerCapture capture;
-    capture.fails = 0;
-
-    std::string longMsg = "speed:180 move_x:0.5 move_y:-0.25 l2:1 extra:1";
-    while (longMsg.size() < 80) {
-        longMsg += " k:1";
-    }
-    expect(longMsg.size() > 64, "text message longer than 64");
-
-    for (size_t i = 0; i < longMsg.size(); i += 64) {
-        const size_t n = (i + 64 < longMsg.size()) ? 64 : (longMsg.size() - i);
-        expect(
-            framer.append(reinterpret_cast<const uint8_t*>(longMsg.data() + i), n),
-            "text append chunk"
-        );
-    }
-    framer.processAfterBurst(onObject, onFail, &capture);
-    expect(capture.objects.size() == 1, "text drained available is one message");
-    expect(capture.objects[0] == longMsg, "text full message preserved");
-
-    capture.objects.clear();
-    framer.reset();
-    const char* first = "move_x:1";
-    const char* second = " move_y:2\n";
-    expect(framer.append(reinterpret_cast<const uint8_t*>(first), std::strlen(first)), "text partial line");
-    framer.processAfterBurst(onObject, onFail, &capture);
-    expect(capture.objects.size() == 1, "text no-lf burst emits");
-    capture.objects.clear();
-    framer.reset();
-    expect(framer.append(reinterpret_cast<const uint8_t*>(first), std::strlen(first)), "text hold start");
-    expect(framer.append(reinterpret_cast<const uint8_t*>(second), std::strlen(second)), "text lf arrives");
-    framer.processAfterBurst(onObject, onFail, &capture);
-    expect(capture.objects.size() == 1, "text lf completes line");
-    expect(capture.objects[0] == "move_x:1 move_y:2", "text lf payload");
-
-    capture.objects.clear();
-    framer.reset();
-    const char* crlf = "a:1\r\nb:2\r\n";
-    expect(framer.append(reinterpret_cast<const uint8_t*>(crlf), std::strlen(crlf)), "text crlf append");
-    framer.processAfterBurst(onObject, onFail, &capture);
-    expect(capture.objects.size() == 2, "text crlf two lines");
-
-    capture.objects.clear();
-    framer.reset();
-    const char* many = "a:1\nb:2\nc:3\n";
-    expect(framer.append(reinterpret_cast<const uint8_t*>(many), std::strlen(many)), "text multi append");
-    framer.processAfterBurst(onObject, onFail, &capture);
-    expect(capture.objects.size() == 3, "text multiple lines");
-
-    capture.objects.clear();
-    framer.reset();
-    const char* primed = "a:1\n";
-    expect(framer.append(reinterpret_cast<const uint8_t*>(primed), std::strlen(primed)), "text prime lf");
-    framer.processAfterBurst(onObject, onFail, &capture);
-    expect(capture.objects.size() == 1, "text prime line");
-    capture.objects.clear();
-    const char* held = "speed:1";
-    expect(framer.append(reinterpret_cast<const uint8_t*>(held), std::strlen(held)), "text hold after lf");
-    framer.processAfterBurst(onObject, onFail, &capture);
-    expect(capture.objects.empty(), "text partial line kept across burst");
-    const char* rest = "80\n";
-    expect(framer.append(reinterpret_cast<const uint8_t*>(rest), std::strlen(rest)), "text rest");
-    framer.processAfterBurst(onObject, onFail, &capture);
-    expect(capture.objects.size() == 1, "text split across bursts with lf");
-    expect(capture.objects[0] == "speed:180", "text split payload");
-
-    framer.reset();
-    std::string huge(AZDECK_RX_BUFFER_SIZE, 'x');
-    expect(!framer.append(reinterpret_cast<const uint8_t*>(huge.data()), huge.size()), "text overflow");
-}
-
 static void testPing() {
     const char* ping = "AZDECK_PING:1723456789012";
     expect(azdeckIsPing(ping, std::strlen(ping)), "detect ping");
@@ -449,6 +158,14 @@ static void testPing() {
         "build pong"
     );
     expect(std::strcmp(pong, "AZDECK_PONG:1723456789012") == 0, "pong token");
+
+    const char* shortPing = "AZDECK_PING:a";
+    expect(azdeckIsPing(shortPing, std::strlen(shortPing)), "detect short ping");
+    expect(
+        azdeckBuildPong(shortPing, std::strlen(shortPing), pong, sizeof(pong), &pongLength),
+        "build short pong"
+    );
+    expect(std::strcmp(pong, "AZDECK_PONG:a") == 0, "short pong token");
 }
 
 static void handleCopy(AzDeckControlCore& core, const char* payload, uint32_t nowMs) {
@@ -516,7 +233,7 @@ static void testPacketQueue() {
 
 static void testControlCore() {
     AzDeckControlCore jsonCore;
-    jsonCore.configure(BLE, JSON, 350);
+    jsonCore.configure(BLE, 350);
     handleCopy(jsonCore, "{\"x\":1}", 0);
     expect(jsonCore.value("x") == 1.0f, "json control x");
     handleCopy(jsonCore, "{\"x\":\"oops\"}", 10);
@@ -525,23 +242,18 @@ static void testControlCore() {
     jsonCore.checkTimeout(351);
     expect(!jsonCore.hasCommand(), "malformed json does not refresh timeout");
 
-    AzDeckControlCore textCore;
-    textCore.configure(TCP, TEXT, 350);
-    handleCopy(textCore, "x:1", 0);
-    expect(textCore.value("x") == 1.0f, "text control x");
-    handleCopy(textCore, "x:oops", 10);
-    expect(textCore.value("x") == 0.0f, "malformed text zeros x");
-
     AzDeckControlCore service;
-    service.configure(BLE, JSON, 350);
+    service.configure(BLE, 350);
     handleCopy(service, "{\"x\":1}", 0);
     handleCopy(service, "{\"type\":\"telemetry\",\"battery\":80}", 10);
     expect(service.value("x") == 1.0f, "service json keeps x");
+    handleCopy(service, "{\"type\":\"settings_get\"}", 20);
+    expect(service.value("x") == 1.0f, "settings_get keeps x");
     service.checkTimeout(351);
     expect(service.value("x") == 0.0f, "service json does not refresh timeout");
 
     AzDeckControlCore empty;
-    empty.configure(BLE, JSON, 350);
+    empty.configure(BLE, 350);
     handleCopy(empty, "{\"x\":1}", 0);
     handleCopy(empty, "{}", 10);
     expect(empty.value("x") == 1.0f, "empty json keeps x");
@@ -549,7 +261,7 @@ static void testControlCore() {
     expect(empty.value("x") == 0.0f, "empty json does not refresh timeout");
 
     AzDeckControlCore ws;
-    ws.configure(WEBSOCKET, JSON, 350);
+    ws.configure(WEBSOCKET, 350);
     handleCopy(ws, "{\"x\":1}", 0);
     handleCopy(ws, "AZDECK_PING:1723456789012", 10);
     char pong[64];
@@ -560,11 +272,11 @@ static void testControlCore() {
     ws.checkTimeout(351);
     expect(ws.value("x") == 0.0f, "ws ping does not refresh timeout");
 
-    const AzDeckTransport others[] = {BLE, TCP, SPP};
-    const char* names[] = {"ble", "tcp", "spp"};
-    for (int i = 0; i < 3; ++i) {
+    const AzDeckTransport others[] = {BLE, SPP};
+    const char* names[] = {"ble", "spp"};
+    for (int i = 0; i < 2; ++i) {
         AzDeckControlCore core;
-        core.configure(others[i], JSON, 350);
+        core.configure(others[i], 350);
         handleCopy(core, "{\"x\":1}", 0);
         handleCopy(core, "AZDECK_PING:1723456789012", 10);
         pongLength = 0;
@@ -584,7 +296,7 @@ static void testControlCore() {
     }
 
     AzDeckControlCore timeoutZero;
-    timeoutZero.configure(BLE, JSON, 0);
+    timeoutZero.configure(BLE, 0);
     expect(timeoutZero.timeoutMs() == AZDECK_DEFAULT_TIMEOUT_MS, "timeout 0 uses 350");
     handleCopy(timeoutZero, "{\"x\":1}", 0);
     timeoutZero.checkTimeout(351);
@@ -605,13 +317,13 @@ static bool parseTelemetry(
 
 static void testTelemetry() {
     AzDeckControlCore empty;
-    empty.configure(BLE, JSON, 350);
+    empty.configure(BLE, 350);
     char buffer[AZDECK_RX_BUFFER_SIZE];
     size_t length = 0;
     expect(!empty.takeTelemetry(buffer, sizeof(buffer), &length), "empty queue");
 
     AzDeckControlCore one;
-    one.configure(BLE, JSON, 350);
+    one.configure(BLE, 350);
     expect(one.queueTelemetry("battery", 7.4f), "queue battery");
     expect(one.takeTelemetry(buffer, sizeof(buffer), &length), "take one key");
     StaticJsonDocument<AZDECK_JSON_DOC_SIZE> doc;
@@ -622,7 +334,7 @@ static void testTelemetry() {
     expect(!one.takeTelemetry(buffer, sizeof(buffer), &length), "one key drained");
 
     AzDeckControlCore two;
-    two.configure(TCP, TEXT, 350);
+    two.configure(BLE, 350);
     expect(two.queueTelemetry("battery", 7.4f), "queue two battery");
     expect(two.queueTelemetry("voltage", 12.5f), "queue two voltage");
     expect(two.takeTelemetry(buffer, sizeof(buffer), &length), "take two keys");
@@ -633,7 +345,7 @@ static void testTelemetry() {
     expect(std::fabs(doc["voltage"].as<float>() - 12.5f) < 0.001f, "two key voltage");
 
     AzDeckControlCore failsafeCore;
-    failsafeCore.configure(BLE, JSON, 350);
+    failsafeCore.configure(BLE, 350);
     handleCopy(failsafeCore, "{\"x\":1}", 0);
     expect(failsafeCore.queueTelemetry("battery", 8.1f), "queue before failsafe");
     failsafeCore.failsafe();
@@ -644,13 +356,13 @@ static void testTelemetry() {
     expect(std::fabs(doc["battery"].as<float>() - 8.1f) < 0.001f, "failsafe telemetry value");
 
     AzDeckControlCore inbound;
-    inbound.configure(BLE, JSON, 350);
+    inbound.configure(BLE, 350);
     handleCopy(inbound, "{\"type\":\"telemetry\",\"x\":1}", 0);
     expect(inbound.value("x") == 0.0f, "inbound telemetry does not set x");
     expect(!inbound.hasCommand(), "inbound telemetry does not refresh timeout");
 
     AzDeckControlCore rejected;
-    rejected.configure(BLE, JSON, 350);
+    rejected.configure(BLE, 350);
     char longName[AZDECK_MAX_CHANNEL_NAME_LENGTH + 2];
     for (int i = 0; i < AZDECK_MAX_CHANNEL_NAME_LENGTH + 1; ++i) {
         longName[i] = 'a';
@@ -668,7 +380,7 @@ static void testTelemetry() {
     expect(!rejected.takeTelemetry(buffer, sizeof(buffer), &length), "rejected stays empty");
 
     AzDeckControlCore full;
-    full.configure(BLE, JSON, 350);
+    full.configure(BLE, 350);
     for (int i = 0; i < AZDECK_MAX_TELEMETRY_CHANNELS; ++i) {
         char name[8];
         std::snprintf(name, sizeof(name), "k%02d", i);
@@ -677,7 +389,7 @@ static void testTelemetry() {
     expect(!full.queueTelemetry("extra", 1.0f), "extra telemetry key ignored");
 
     AzDeckControlCore overflow;
-    overflow.configure(BLE, JSON, 350);
+    overflow.configure(BLE, 350);
     expect(overflow.queueTelemetry("battery", 7.4f), "overflow measure queue");
     char oneKey[AZDECK_RX_BUFFER_SIZE];
     size_t oneLen = 0;
@@ -700,7 +412,7 @@ static void testTelemetry() {
     expect(!doc.containsKey("battery"), "remainder does not resend first");
 
     AzDeckControlCore text;
-    text.configure(WEBSOCKET, JSON, 350);
+    text.configure(WEBSOCKET, 350);
     expect(text.queueTelemetry("serial", "hello"), "queue text");
     expect(text.takeTelemetry(buffer, sizeof(buffer), &length), "take text");
     doc.clear();
@@ -717,16 +429,82 @@ static void testTelemetry() {
     expect(!text.queueTelemetry("serial", static_cast<const char*>(nullptr)), "null text ignored");
 }
 
+static void testSettingsHttp() {
+    const char* incomplete = "HEAD /settings HTTP/1.1\r\nHost: 192.168.4.1\r\n";
+    expect(
+        azdeckSettingsHttpClassify(incomplete, std::strlen(incomplete)) ==
+            AZDECK_HTTP_INCOMPLETE,
+        "incomplete without header end"
+    );
+
+    const char* head = "HEAD /settings HTTP/1.1\r\nHost: 192.168.4.1\r\n\r\n";
+    expect(
+        azdeckSettingsHttpClassify(head, std::strlen(head)) == AZDECK_HTTP_SETTINGS_HEAD,
+        "head settings"
+    );
+
+    const char* get = "GET /settings HTTP/1.1\r\n\r\n";
+    expect(
+        azdeckSettingsHttpClassify(get, std::strlen(get)) == AZDECK_HTTP_SETTINGS_GET,
+        "get settings"
+    );
+
+    const char* query = "GET /settings?x=1 HTTP/1.1\r\n\r\n";
+    expect(
+        azdeckSettingsHttpClassify(query, std::strlen(query)) == AZDECK_HTTP_SETTINGS_GET,
+        "get settings query"
+    );
+
+    const char* root = "GET / HTTP/1.1\r\n\r\n";
+    expect(
+        azdeckSettingsHttpClassify(root, std::strlen(root)) == AZDECK_HTTP_OTHER,
+        "get root is other"
+    );
+
+    const char* post = "POST /settings HTTP/1.1\r\n\r\n";
+    expect(
+        azdeckSettingsHttpClassify(post, std::strlen(post)) == AZDECK_HTTP_OTHER,
+        "post settings is other"
+    );
+
+    char ok[256];
+    const size_t okLen = azdeckSettingsHttpFormatOk(ok, sizeof(ok), 12);
+    expect(okLen > 0, "ok headers length");
+    expect(std::strstr(ok, "X-AzDeck-Settings: 1") != nullptr, "ok marker");
+    expect(std::strstr(ok, "Content-Type: text/html; charset=utf-8") != nullptr, "ok type");
+    expect(std::strstr(ok, "Cache-Control: no-store") != nullptr, "ok cache");
+    expect(std::strstr(ok, "Content-Length: 12") != nullptr, "ok content length");
+    expect(std::strstr(ok, "\r\n\r\n") != nullptr, "ok header end");
+
+    char missing[256];
+    const size_t missingLen = azdeckSettingsHttpFormatNotFound(missing, sizeof(missing));
+    expect(missingLen > 0, "404 headers length");
+    expect(std::strstr(missing, "X-AzDeck-Settings") == nullptr, "404 has no marker");
+    expect(std::strstr(missing, "404") != nullptr, "404 status");
+
+    char q[32];
+    expect(azdeckSettingsHttpQuery(get, std::strlen(get), q, sizeof(q)) == 0, "get no query");
+    expect(
+        azdeckSettingsHttpQuery(query, std::strlen(query), q, sizeof(q)) > 0,
+        "query extracted"
+    );
+    expect(std::strcmp(q, "x=1") == 0, "query value");
+    const char* led = "GET /settings?led=1 HTTP/1.1\r\n\r\n";
+    expect(
+        azdeckSettingsHttpQuery(led, std::strlen(led), q, sizeof(q)) > 0,
+        "led query extracted"
+    );
+    expect(std::strcmp(q, "led=1") == 0, "led query value");
+}
+
 int main() {
     testChannelStore();
     testJsonParser();
-    testTextParser();
-    testJsonFramer();
-    testTextFramer();
     testPing();
     testPacketQueue();
     testControlCore();
     testTelemetry();
+    testSettingsHttp();
 
     if (gFailures > 0) {
         std::printf("%d test(s) failed\n", gFailures);

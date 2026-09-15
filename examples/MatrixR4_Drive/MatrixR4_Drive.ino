@@ -11,7 +11,7 @@ void setup() {
     MiniR4.PWR.setBattCell(2);
     MiniR4.M1.setBrake(true);
     MiniR4.M2.setBrake(true);
-    deck.begin(BLE, JSON);
+    deck.begin(BLE);
 }
 
 void loop() {

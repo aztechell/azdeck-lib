@@ -3,13 +3,11 @@
 #include "../AzDeckTypes.h"
 #include "JsonParser.h"
 #include "Ping.h"
-#include "TextParser.h"
 
 #include <string.h>
 
 AzDeckControlCore::AzDeckControlCore()
     : transport_(BLE),
-      serializer_(JSON),
       timeoutMs_(AZDECK_DEFAULT_TIMEOUT_MS),
       lastCommandMs_(0),
       hasCommand_(false),
@@ -19,11 +17,9 @@ AzDeckControlCore::AzDeckControlCore()
 
 void AzDeckControlCore::configure(
     AzDeckTransport transport,
-    AzDeckSerializer serializer,
     uint16_t timeoutMs
 ) {
     transport_ = transport;
-    serializer_ = serializer;
     timeoutMs_ = (timeoutMs == 0) ? AZDECK_DEFAULT_TIMEOUT_MS : timeoutMs;
     lastCommandMs_ = 0;
     hasCommand_ = false;
@@ -54,26 +50,12 @@ void AzDeckControlCore::handlePayload(char* data, size_t length, uint32_t nowMs)
         return;
     }
 
-    if (serializer_ == JSON) {
-        const AzDeckJsonParseResult result = azdeckParseJson(data, length, channels_);
-        if (result == AZDECK_JSON_MALFORMED) {
-            failsafe();
-            return;
-        }
-        if (result == AZDECK_JSON_SERVICE || result == AZDECK_JSON_EMPTY) {
-            return;
-        }
-        lastCommandMs_ = nowMs;
-        hasCommand_ = true;
-        return;
-    }
-
-    const AzDeckTextParseResult result = azdeckParseText(data, length, channels_);
-    if (result == AZDECK_TEXT_MALFORMED) {
+    const AzDeckJsonParseResult result = azdeckParseJson(data, length, channels_);
+    if (result == AZDECK_JSON_MALFORMED) {
         failsafe();
         return;
     }
-    if (result == AZDECK_TEXT_EMPTY) {
+    if (result == AZDECK_JSON_SERVICE || result == AZDECK_JSON_EMPTY) {
         return;
     }
     lastCommandMs_ = nowMs;

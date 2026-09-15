@@ -7,7 +7,7 @@ int n = 0;
 uint32_t lastMs = 0;
 
 void setup() {
-    deck.begin(WEBSOCKET, JSON);
+    deck.begin(WEBSOCKET);
 }
 
 void loop() {

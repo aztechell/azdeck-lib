@@ -17,9 +17,11 @@ public:
         uint16_t port
     );
 
+    void settings(const char* html);
+    void settings(const char* html, void (*onQuery)(const char* query));
+
     bool begin(
         AzDeckTransport transport,
-        AzDeckSerializer serializer,
         uint16_t timeoutMs = 350
     );
 
@@ -41,17 +43,14 @@ private:
     bool startTransport();
     void pollTransport();
 
-    static void tcpPayloadThunk(void* context, const char* data, size_t length);
-    static void tcpFailThunk(void* context);
-    static void tcpDisconnectThunk(void* context);
-
     AzDeckControlCore core_;
     AzDeckTransport transport_;
-    AzDeckSerializer serializer_;
     bool started_;
     bool wifiConfigured_;
     char deviceName_[AZDECK_MAX_DEVICE_NAME_LENGTH + 1];
     char ssid_[AZDECK_MAX_SSID_LENGTH + 1];
     char password_[AZDECK_MAX_PASSWORD_LENGTH + 1];
     uint16_t netPort_;
+    const char* settingsHtml_;
+    void (*settingsQuery_)(const char* query);
 };

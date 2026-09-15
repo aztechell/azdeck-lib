@@ -1,10 +1,10 @@
 #include "AzDeck.h"
 
 #include "internal/PlatformCaps.h"
+#include "internal/platform/SettingsHttp.h"
 #include "internal/platform/WifiAp.h"
 #include "internal/transports/BleTransport.h"
 #include "internal/transports/SppTransport.h"
-#include "internal/transports/TcpTransport.h"
 #include "internal/transports/WebSocketTransport.h"
 
 #include <string.h>
@@ -32,7 +32,6 @@ bool transportSupported(AzDeckTransport transport) {
         case BLE:
             return AZDECK_HAS_BLE;
         case WEBSOCKET:
-        case TCP:
             return AZDECK_HAS_WIFI;
         case SPP:
             return AZDECK_HAS_SPP;
@@ -45,10 +44,11 @@ bool transportSupported(AzDeckTransport transport) {
 
 AzDeck::AzDeck()
     : transport_(BLE),
-      serializer_(JSON),
       started_(false),
       wifiConfigured_(false),
-      netPort_(AZDECK_DEFAULT_WS_PORT) {
+      netPort_(AZDECK_DEFAULT_WS_PORT),
+      settingsHtml_(nullptr),
+      settingsQuery_(nullptr) {
     copyCString(deviceName_, sizeof(deviceName_), AZDECK_DEFAULT_NAME);
     copyCString(ssid_, sizeof(ssid_), AZDECK_DEFAULT_SSID);
     copyCString(password_, sizeof(password_), AZDECK_DEFAULT_PASSWORD);
@@ -71,9 +71,22 @@ void AzDeck::wifi(const char* ssid, const char* password, uint16_t port) {
     wifiConfigured_ = true;
 }
 
+void AzDeck::settings(const char* html) {
+    settings(html, nullptr);
+}
+
+void AzDeck::settings(const char* html, void (*onQuery)(const char* query)) {
+    if (html == nullptr || html[0] == '\0') {
+        settingsHtml_ = nullptr;
+        settingsQuery_ = nullptr;
+        return;
+    }
+    settingsHtml_ = html;
+    settingsQuery_ = onQuery;
+}
+
 bool AzDeck::begin(
     AzDeckTransport transport,
-    AzDeckSerializer serializer,
     uint16_t timeoutMs
 ) {
     if (started_) {
@@ -84,8 +97,7 @@ bool AzDeck::begin(
     }
 
     transport_ = transport;
-    serializer_ = serializer;
-    core_.configure(transport, serializer, timeoutMs);
+    core_.configure(transport, timeoutMs);
 
     if (!startTransport()) {
         return false;
@@ -106,14 +118,13 @@ bool AzDeck::startTransport() {
             if (!azdeckStartAccessPoint(ssid_, password_)) {
                 return false;
             }
-            return azdeckWsBegin(port);
-        }
-        case TCP: {
-            const uint16_t port = wifiConfigured_ ? netPort_ : AZDECK_DEFAULT_TCP_PORT;
-            if (!azdeckStartAccessPoint(ssid_, password_)) {
+            if (!azdeckWsBegin(port)) {
                 return false;
             }
-            return azdeckTcpBegin(port, serializer_ == JSON);
+            if (settingsHtml_ != nullptr) {
+                azdeckSettingsHttpBegin(settingsHtml_, settingsQuery_);
+            }
+            return true;
         }
         default:
             return false;
@@ -131,9 +142,6 @@ void AzDeck::sendReply(const char* data, size_t length, uint8_t clientId) {
             break;
         case BLE:
             azdeckBleSend(data, length);
-            break;
-        case TCP:
-            azdeckTcpSend(data, length);
             break;
         case SPP:
             azdeckSppSend(data, length);
@@ -154,19 +162,6 @@ void AzDeck::handlePayload(char* data, size_t length, uint8_t clientId) {
     if (core_.takePong(pong, sizeof(pong), &pongLength)) {
         sendReply(pong, pongLength, clientId);
     }
-}
-
-void AzDeck::tcpPayloadThunk(void* context, const char* data, size_t length) {
-    AzDeck* self = static_cast<AzDeck*>(context);
-    self->handlePayload(const_cast<char*>(data), length, 0);
-}
-
-void AzDeck::tcpFailThunk(void* context) {
-    static_cast<AzDeck*>(context)->failsafe();
-}
-
-void AzDeck::tcpDisconnectThunk(void* context) {
-    static_cast<AzDeck*>(context)->core_.noteDisconnect();
 }
 
 void AzDeck::checkTimeout() {
@@ -198,6 +193,7 @@ void AzDeck::pollTransport() {
             break;
         case WEBSOCKET:
             azdeckWsUpdate();
+            azdeckSettingsHttpUpdate();
             if (azdeckWsTakeDisconnect()) {
                 core_.noteDisconnect();
             }
@@ -207,14 +203,6 @@ void AzDeck::pollTransport() {
             if (overflow) {
                 failsafe();
             }
-            break;
-        case TCP:
-            azdeckTcpUpdate(
-                tcpPayloadThunk,
-                tcpFailThunk,
-                tcpDisconnectThunk,
-                this
-            );
             break;
         case SPP:
             azdeckSppUpdate();

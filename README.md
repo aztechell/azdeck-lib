@@ -8,7 +8,7 @@ Controller app: [AzDeck on Google Play](https://play.google.com/store/apps/detai
 AzDeck deck;
 
 void setup() {
-    deck.begin(BLE, JSON);
+    deck.begin(BLE);
 }
 
 void loop() {
@@ -18,7 +18,7 @@ void loop() {
 }
 ```
 
-Arduino library for receiving named control channels from the AzDeck Android app. The sketch does not set up BLE, TCP, WebSocket, or Bluetooth SPP, and does not parse JSON or TEXT.
+Arduino library for receiving named control channels from the AzDeck Android app. The sketch does not set up BLE, WebSocket, or Bluetooth SPP, and does not parse JSON.
 
 App, firmware, and protocol: [aztechell/azdeck](https://github.com/aztechell/azdeck)
 
@@ -49,13 +49,17 @@ float custom = deck.value("custom_channel");
 
 Channel names come from the AzDeck profile. Unknown channels return `0`.
 
-Timeout defaults to **350 ms**. `deck.begin(BLE, JSON, 500)` changes it. Passing `0` still uses 350 ms.
+Timeout defaults to **350 ms**. `deck.begin(BLE, 500)` changes it. Passing `0` still uses 350 ms.
 
 If no valid control packet arrives within the timeout, every stored channel is set to `0`.
 
+Control snapshots are JSON objects with named numeric channels, for example `{"move_x":1,"l2":1}`. A JSON object with a `"type"` field is ignored (no failsafe, no timeout refresh).
+
+The app may send `AZDECK_PING:` plus a short hex token. The library replies `AZDECK_PONG:` with the same token on BLE notify or WebSocket (and SPP with a newline). Ping does not change channels or the timeout.
+
 ## Sending telemetry
 
-`send()` queues a number or a short string (max **80** characters, or **32** on UNO R4 WiFi). `update()` flushes dirty keys as one JSON object `{"type":"telemetry",...}` on the same reply path as ping (BLE notify, WebSocket, TCP, or SPP). BLE profiles need a notify characteristic.
+`send()` queues a number or a short string (max **80** characters, or **32** on UNO R4 WiFi). `update()` flushes dirty keys as one JSON object `{"type":"telemetry",...}` on the same reply path as ping (BLE notify, WebSocket, or SPP). BLE profiles need a notify characteristic.
 
 ```cpp
 deck.send("battery", 7.4f);
@@ -73,48 +77,55 @@ BLE / Bluetooth SPP device name (default `AzDeck`):
 
 ```cpp
 deck.name("My Robot");
-deck.begin(BLE, JSON);
+deck.begin(BLE);
 ```
 
-Wi-Fi in v0.1.3 always creates a **controller Access Point** (not Station Mode), then starts a server:
+Wi-Fi in v0.2.1 always creates a **controller Access Point** (not Station Mode), then starts a WebSocket server:
 
 ```cpp
 deck.wifi("My Robot", "12345678", 81);
-deck.begin(WEBSOCKET, JSON);
-```
-
-```cpp
-deck.wifi("My Robot", "12345678", 5000);
-deck.begin(TCP, JSON);
+deck.begin(WEBSOCKET);
 ```
 
 Defaults if `wifi()` is not called:
 
-| | WebSocket | TCP |
-|---|---|---|
-| SSID | `AzDeck` | `AzDeck` |
-| Password | `azdeck123` | `azdeck123` |
-| IP | `192.168.4.1` | `192.168.4.1` |
-| Port | `81` | `5000` |
+| | WebSocket |
+|---|---|
+| SSID | `AzDeck` |
+| Password | `azdeck123` |
+| IP | `192.168.4.1` |
+| Port | `81` |
+
+## Device settings page
+
+WebSocket only. Call `settings()` **before** `begin` with HTML the library serves at `http://192.168.4.1/settings` (HTTP port 80). The app probes with `HEAD` and needs `X-AzDeck-Settings: 1`. BLE and SPP do not use this.
+
+```cpp
+deck.settings(html, onQuery);
+deck.begin(WEBSOCKET);
+```
+
+`GET /settings?led=1` still serves the page and calls `onQuery("led=1")`. `examples/Settings_Minimal` toggles `LED_BUILTIN`.
+
+If `settings()` is not called, port 80 stays closed and the app Settings button stays off. Opening Settings sends the profile's initial channel values, then pauses control packets; the 350 ms failsafe still zeros channels.
 
 ## Transports and boards
 
 ```cpp
-deck.begin(BLE, JSON);
-deck.begin(WEBSOCKET, JSON);
-deck.begin(TCP, JSON);
-deck.begin(SPP, TEXT);
+deck.begin(BLE);
+deck.begin(WEBSOCKET);
+deck.begin(SPP);
 ```
 
-| Board | BLE | WebSocket | TCP | SPP |
-|---|:---:|:---:|:---:|:---:|
-| ESP32 classic | yes | yes | yes | yes |
-| ESP32-S2 | no | yes | yes | no |
-| ESP32-S3 | yes | yes | yes | no |
-| ESP32-C3 / C5 / C6 | yes | yes | yes | no |
-| ESP32-H2 | yes | no | no | no |
-| ESP8266 | no | yes | yes | no |
-| Arduino UNO R4 WiFi | yes | yes | yes | no |
+| Board | BLE | WebSocket | SPP |
+|---|:---:|:---:|:---:|
+| ESP32 classic | yes | yes | yes |
+| ESP32-S2 | no | yes | no |
+| ESP32-S3 | yes | yes | no |
+| ESP32-C3 / C5 / C6 | yes | yes | no |
+| ESP32-H2 | yes | no | no |
+| ESP8266 | no | yes | no |
+| Arduino UNO R4 WiFi | yes | yes | no |
 
 Unsupported combinations compile, and `begin()` returns `false`. The library does not print to Serial.
 
@@ -128,14 +139,12 @@ Incoming packets are limited to **512** bytes on ESP8266 and UNO R4 WiFi, and **
 
 Typical AzDeck keys such as `move_x` fit 32 JSON channels in those packet limits. Thirty-two channels with 32-character names need more than 512 bytes and will not fit on ESP8266 / UNO R4 WiFi.
 
-## Serializers
+## Limits for v0.2.1
 
-JSON (recommended) and TEXT (`key:value` or `key=value`, separated by space, `;`, or `,`).
-
-## Limits for v0.1.3
-
+- JSON on the wire; channel names match the AzDeck profile
 - Access Point only; no router / Station Mode
-- No UDP, labels, or robot/motor APIs
+- Web settings page is opt-in (`settings()` + WebSocket HTTP `/settings`)
+- No TCP, UDP, labels, or robot/motor APIs
 - Telemetry is `send()` only (numbers or short strings)
 - Telemetry store: **32** keys on ESP32/ESP8266, **8** keys on UNO R4 WiFi
 - ArduinoJson 6.x only (`StaticJsonDocument`)

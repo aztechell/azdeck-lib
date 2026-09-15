@@ -4,7 +4,7 @@
 AzDeck deck;
 
 void setup() {
-    deck.begin(SPP, TEXT);
+    deck.begin(SPP);
 }
 
 void loop() {

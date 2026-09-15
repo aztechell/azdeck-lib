@@ -14,7 +14,6 @@ public:
 
     void configure(
         AzDeckTransport transport,
-        AzDeckSerializer serializer,
         uint16_t timeoutMs
     );
 
@@ -35,7 +34,6 @@ private:
     AzDeckChannelStore channels_;
     AzDeckTelemetryStore telemetry_;
     AzDeckTransport transport_;
-    AzDeckSerializer serializer_;
     uint16_t timeoutMs_;
     uint32_t lastCommandMs_;
     bool hasCommand_;

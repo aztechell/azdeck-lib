@@ -8,7 +8,6 @@
 
 AzDeck	KEYWORD1
 AzDeckTransport	KEYWORD1
-AzDeckSerializer	KEYWORD1
 
 #######################################
 # Methods and Functions (KEYWORD2)
@@ -18,6 +17,7 @@ begin	KEYWORD2
 update	KEYWORD2
 name	KEYWORD2
 wifi	KEYWORD2
+settings	KEYWORD2
 value	KEYWORD2
 axis	KEYWORD2
 slider	KEYWORD2
@@ -30,8 +30,5 @@ send	KEYWORD2
 #######################################
 
 BLE	LITERAL1
-TCP	LITERAL1
 WEBSOCKET	LITERAL1
 SPP	LITERAL1
-JSON	LITERAL1
-TEXT	LITERAL1

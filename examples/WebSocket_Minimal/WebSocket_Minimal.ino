@@ -4,7 +4,7 @@
 AzDeck deck;
 
 void setup() {
-    deck.begin(WEBSOCKET, JSON);
+    deck.begin(WEBSOCKET);
 }
 
 void loop() {
